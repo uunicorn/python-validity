@@ -23,6 +23,12 @@ class User():
     def __repr__(self):
         return '<User: dbid=%04x identity=%s fingers=%s>' % (self.dbid, repr(self.identity), repr(self.fingers))
 
+def subtype_to_string(s):
+    if s < 0xf5 or s > 0xfe:
+        return 'Unknown'
+
+    return 'WINBIO_FINGER_UNSPECIFIED_POS_%02d' % (s - 0xf5 + 1)
+
 def parse_user_storage(rsp):
     assert_status(rsp[:2])
     rsp=rsp[2:]
@@ -136,6 +142,24 @@ e3d473d5f1897e05db677c7ff6e260048255fdbe35fae42c791ea57ac0f2334e6ab5c650f59f3b27
 eb1e84deb687d2dc3d5cf4b03dbe35d165e
 ''')
 
+class DbRecord():
+    def __init__(self):
+        self.dbid = 0
+        self.type = 0
+        self.storage = 0
+        self.value = None
+        self.children = None
+
+    def __repr__(self):
+        return '<DbRecord: dbid=%d type=%d storage=%d value=%s children=%s>' % (
+                    self.dbid,
+                    self.type,
+                    self.storage,
+                    repr(self.value),
+                    repr(self.children)
+                )
+            
+
 class Db():
     def __init__(self, tls):
         self.tls = tls
@@ -163,8 +187,33 @@ class Db():
         else:
             return parse_user(rsp)
 
+    def get_record_value(self, dbid):
+        rsp = self.tls.app(pack('<BH', 0x49, dbid))
+        assert_status(rsp)
+
+        rec = DbRecord()
+        rec.dbid, rec.type, rec.storage, sz = unpack('<xxHHHHxx', rsp[:12])
+        rec.value = rsp[12:12+sz]
+
+        return rec
+
+    def get_record_children(self, dbid):
+        rsp = self.tls.app(pack('<BH', 0x46, dbid))
+        assert_status(rsp)
+        
+        rec = DbRecord()
+        rec.dbid, rec.type, rec.storage, sz, cnt = unpack('<xxHHHHHxx', rsp[:14])
+        rsp = rsp[14:]
+        rec.children=[]
+        for i in range(0, cnt):
+            dbid, typ = unpack('<HH', rsp[i:i+4])
+            rec.children += [{ 'dbid': dbid, 'type': typ }]
+
+        return rec
+
     def del_record(self, dbid):
         assert_status(self.tls.app(pack('<BH', 0x48, dbid)))
+
 
     def new_record(self, parent, typ, storage, data):
         assert_status(self.tls.app(b'\x45'))
@@ -189,6 +238,12 @@ class Db():
         rec = self.new_record(userid, 0xb, stg.dbid, template)
         return rec
 
+    def new_data(self, parent, data):
+        stg = self.get_user_storage(name='StgWindsor')
+        data = pack('<HH', 1, len(data)) + data
+        rec = self.new_record(parent, 0x8, stg.dbid, data)
+        return rec
+
     def flush_changes(self):
         assert_status(self.tls.app(b'\x1a'))
 
@@ -198,5 +253,5 @@ class Db():
         for u in usrs:
             print('%2d: User %s with %d fingers:' % (u.dbid, repr(u.identity), len(u.fingers)))
             for f in u.fingers:
-                print('    %2d: %02x (WINBIO_FINGER_UNSPECIFIED_POS_%02d)' % (f['dbid'], f['subtype'], f['subtype'] - 0xf5 + 1))
+                print('    %2d: %02x (%s)' % (f['dbid'], f['subtype'], subtype_to_string(f['subtype'])))
 

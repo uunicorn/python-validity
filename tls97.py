@@ -11,6 +11,7 @@ from fastecdsa.point import Point
 from fastecdsa.keys import gen_private_key, get_public_key
 from fastecdsa.ecdsa import sign
 from fastecdsa.encoding.der import DEREncoder
+import pickle
 
 
 # Info about the host computer
@@ -127,6 +128,27 @@ class Tls():
         self.validation_key = key_block[0x20:0x20+0x20]
         self.encryption_key = key_block[0x40:0x40+0x20]
         self.decryption_key = key_block[0x60:0x60+0x20]
+
+    def save(self):
+        with open('tls.dict', 'wb') as f:
+            pickle.dump({ 
+                'sign_key': self.sign_key,
+                'validation_key': self.validation_key,
+                'encryption_key': self.encryption_key,
+                'decryption_key': self.decryption_key,
+                'secure_rx': self.secure_rx,
+                'secure_tx': self.secure_tx
+            }, f)
+
+    def load(self):
+        with open('tls.dict', 'rb') as f:
+            d=pickle.load(f)
+            self.sign_key = d['sign_key']
+            self.validation_key = d['validation_key']
+            self.encryption_key = d['encryption_key']
+            self.decryption_key = d['decryption_key']
+            self.secure_rx = d['secure_rx']
+            self.secure_tx = d['secure_tx']
 
     def decrypt(self, c):
         iv, c = c[:0x10], c[0x10:]
