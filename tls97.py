@@ -11,6 +11,7 @@ from fastecdsa.point import Point
 from fastecdsa.keys import gen_private_key, get_public_key
 from fastecdsa.ecdsa import sign
 from fastecdsa.encoding.der import DEREncoder
+from util import assert_status
 import pickle
 
 
@@ -70,19 +71,32 @@ def prf(secret, seed, length):
 
     return res[:length]
 
-    
 # TODO assert the right state transitions
 class Tls():
     
     def __init__(self, usb):
         self.usb = usb
         self.trace_enabled = False
-
-    def open(self):
-        self.parse40(self.usb.cmd(unhexlify('40010100000000000000100000')))
-
         self.secure_rx = False
         self.secure_tx = False
+
+    def read_flash(self, which, addr, size):
+        cmd = pack('<BBBHLL', 0x40, which, 1, 0, addr, size)
+        if self.secure_rx and self.secure_tx:
+            rsp=self.app(cmd)
+        else:
+            rsp=self.usb.cmd(cmd)
+        assert_status(rsp)
+        sz, = unpack('<xxLxx', rsp[:8])
+
+        return rsp[8:8+sz]
+
+    def open(self):
+        self.secure_rx = False
+        self.secure_tx = False
+
+        self.parseTlsFlash(self.read_flash(1, 0, 0x1000))
+
         self.handshake_hash = sha256()
 
         rsp=self.usb.cmd(unhexlify('44000000') + self.make_handshake(self.make_client_hello()))
@@ -363,12 +377,7 @@ class Tls():
     def make_ext(self, id, b):
         return pack('>H', id) + with_2bytes_size(b)
 
-    def parse40(self, reply):
-        h, reply = reply[:8], reply[8:]
-
-        if h != unhexlify('0000001000000000'):
-            raise Exception('unexpected header: %s' % hexlify(h).decode())
-
+    def parseTlsFlash(self, reply):
         while len(reply) > 0:
             hdr, reply = reply[:4], reply[4:]
             hs, reply = reply[:0x20], reply[0x20:]
@@ -377,6 +386,12 @@ class Tls():
 
             if id == 0xffff:
                 break
+
+            m=sha256()
+            m.update(body)
+
+            if m.digest() != hs:
+                raise Exception('hash mismatch')
 
             if id == 4:
                 self.handle_priv(body)
@@ -391,12 +406,6 @@ class Tls():
             else:
                 self.trace('unhandled block id %04x (%d bytes): %s' % (id, sz, hexlify(body)))
 
-            m=sha256()
-            m.update(body)
-
-            if m.digest() != hs:
-                raise Exception('hash mismatch')
-
     def handle_empty(self, body):
         if body != b'\0' * len(body):
             raise Exception('Expected empty block')
@@ -404,7 +413,7 @@ class Tls():
     def handle_cert(self, body):
         # TODO validate cert, check if pub keys match
         self.tls_cert = body
-        self.trace('TLS cert pub key: %s' % hexlify(self.tls_cert))
+        self.trace('TLS cert blob: %s' % hexlify(self.tls_cert))
 
     def handle_ecdh(self, body):
         # TODO check the signature
