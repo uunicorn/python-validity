@@ -102,9 +102,20 @@ c1e1e1c221f201d21201e1c1f34242221201f20221f201e241e241d2020221e2420231d221e211e1
 def start_scan(cmd):
     assert_status(tls.app(cmd))
 
+def cancel_capture():
+    usb.queue.put(b'')
+    #sleep(0.2)
+    #rsp=tls.app(b'\x04')
+    #assert_status(rsp)
+    usb.read_82()
+    
 def wait_for_finger():
     while True:
         b=usb.wait_int()
+        
+        if len(b) == 0:
+            raise Exception('Cancelled')
+
         if b[0] == 2:
             break
 
@@ -124,20 +135,27 @@ def stop_prg():
     return tls.app(unhexlify('5100200000'))
 
 def capture(prg):
+    usb.purge_int_queue()
+
     start_scan(prg)
 
     b=usb.wait_int()
     if b[0] != 0:
-        raise Exception('Unexpected interrupt type' % hexlify(b).decode())
-
-    wait_for_finger()
-    wait_till_finished()
-
-    res=stop_prg()
-    
-    b=usb.wait_int()
-    if b[0] != 3:
         raise Exception('Unexpected interrupt type %s' % hexlify(b).decode())
+
+    try:
+        wait_for_finger()
+        wait_till_finished()
+    finally:
+        res=stop_prg()
+    
+    while True:
+        b=usb.wait_int()
+        if b[0] != 3:
+            raise Exception('Unexpected interrupt type %s' % hexlify(b).decode())
+
+        if b[1] == 0x43:
+            break
 
     assert_status(res)
     res = res[2:]
@@ -257,11 +275,11 @@ def parse_dict(x):
     
 def identify():
     glow_start_scan()
-    err = capture(identify_prg)
-    if err != 0:
-        raise Exception('Capture failed: %08x' % err)
-
     try:
+        err = capture(identify_prg)
+        if err != 0:
+            raise Exception('Capture failed: %08x' % err)
+
         # which finger?
         stg_id=0 # match against any storage
         usr_id=0 # match against any user
@@ -327,3 +345,21 @@ def identify():
         
     return rsp
 
+
+def read_flash(which, size):
+    block_size = 0x1000
+    blocks = [tls.read_flash(which, addr, 0x1000) for addr in range(0, size, 0x1000)]
+    return b''.join(blocks)
+
+def dump_flash():
+    with open('db_flash.bin', 'wb') as f:
+        f.write(read_flash(4, 0x30000))
+
+    with open('cert_flash.bin', 'wb') as f:
+        f.write(read_flash(1, 0x1000))
+
+    with open('calib_flash.bin', 'wb') as f:
+        f.write(read_flash(6, 0x8000))
+
+    with open('5_flash.bin', 'wb') as f:
+        f.write(read_flash(5, 0x8000))

@@ -5,6 +5,9 @@ from binascii import *
 from util import assert_status
 from struct import unpack
 from usb.util import claim_interface, release_interface
+from queue import Queue
+from threading import Thread
+from usb.core import USBError
 
 def unhex(x):
     return unhexlify(re.sub('\W', '', x))
@@ -40,13 +43,25 @@ aa41249faeef4d838e280cb5d6fc19cfe86c75f
 class Usb():
     def __init__(self):
         self.trace_enabled = False
+        self.queue = Queue(maxsize=10)
+        self.quit = None
+
+    def purge_int_queue(self):
+        try:
+            while True:
+                self.queue.get_nowait()
+        except:
+            pass
 
     def open(self):
         self.dev = usb.core.find(idVendor=0x138a, idProduct=0x0097)
         self.dev.default_timeout = 5000
+        self.thread = Thread(target=lambda: self.int_thread())
+        self.thread.daemon = True
+        self.thread.start()
 
     def send_init(self):
-        self.dev.set_configuration()
+        #self.dev.set_configuration()
 
         # TODO analyse responses, detect hardware type
         assert_status(self.cmd(unhexlify('01')))
@@ -59,7 +74,7 @@ class Usb():
         (err,), rsp = unpack('<H', rsp[:2]), rsp[2:]
         if err != 0:
             print('Clean slate')
-        self.cmd(init_hardcoded_clean_slate)
+            self.cmd(init_hardcoded_clean_slate)
 
         self.cmd(unhexlify('3e'))
         # why twice?
@@ -73,10 +88,33 @@ class Usb():
         self.trace('<cmd< %s' % hexlify(resp).decode())
         return resp
 
+    def read_82(self):
+        try:
+            resp = self.dev.read(130, 100*1024, 100)
+            resp = bytes(resp)
+            self.trace('<130< %s' % hexlify(resp).decode())
+            return resp
+        except Exception as e:
+            self.trace('<130< Error: %s' % repr(e))
+            return None
+
+    def int_thread(self):
+        try:
+            while True:
+                resp = self.dev.read(131, 1024, timeout=0)
+                resp = bytes(resp)
+                self.trace('<int< %s' % hexlify(resp).decode())
+                self.queue.put(resp)
+        except USBError as e:
+            self.trace('<int< Exception on interrupt thread: %s' % repr(e))
+            if self.quit != None:
+                self.quit(e)
+        finally:
+            self.trace('<int< Interrupt thread is dead')
+
+
     def wait_int(self):
-        resp = self.dev.read(131, 1024, timeout=0)
-        resp = bytes(resp)
-        self.trace('<int< %s' % hexlify(resp).decode())
+        resp = self.queue.get()
         return resp
 
     def trace(self, s):
