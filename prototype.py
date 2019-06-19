@@ -15,6 +15,10 @@ db = Db(tls)
 def open97():
     usb.open()
     usb.send_init()
+
+    # try to init TLS session from the flash
+    tls.parseTlsFlash(db.read_flash(1, 0, 0x1000))
+
     tls.open()
     tls.save()
     #usb.trace_enabled = True
@@ -348,7 +352,7 @@ def identify():
 
 def read_flash(which, size):
     block_size = 0x1000
-    blocks = [tls.read_flash(which, addr, 0x1000) for addr in range(0, size, 0x1000)]
+    blocks = [db.read_flash(which, addr, 0x1000) for addr in range(0, size, 0x1000)]
     return b''.join(blocks)
 
 def dump_flash():
@@ -363,3 +367,13 @@ def dump_flash():
 
     with open('5_flash.bin', 'wb') as f:
         f.write(read_flash(5, 0x8000))
+
+def read_hw_reg32(addr):
+    rsp=tls.cmd(pack('<BLB', 7, addr, 4))
+    assert_status(rsp)
+    rsp = rsp[2:]
+    return rsp
+
+def write_hw_reg32(addr, val):
+    rsp=tls.cmd(pack('<BLLB', 8, addr, val, 4))
+    assert_status(rsp)

@@ -67,18 +67,17 @@ class Usb():
         assert_status(self.cmd(unhexlify('01')))
         assert_status(self.cmd(unhexlify('19')))
 
+        # 43 -- get partition header(?) (02 -- fwext partition)
+        # c28c745a in response is a FwextBuildtime = 0x5A748CC2
         rsp=self.cmd(unhexlify('4302'))
 
         assert_status(self.cmd(init_hardcoded))
         
         (err,), rsp = unpack('<H', rsp[:2]), rsp[2:]
         if err != 0:
+            # fwext is not loaded
             print('Clean slate')
             self.cmd(init_hardcoded_clean_slate)
-
-        self.cmd(unhexlify('3e'))
-        # why twice?
-        self.cmd(unhexlify('3e'))
 
     def cmd(self, out):
         self.trace('>cmd> %s' % hexlify(out).decode())

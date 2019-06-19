@@ -18,21 +18,34 @@ import pickle
 # Info about the host computer
 product_name, serial_number='VirtualBox', '0'
 
-hw_key=b'GWK' + \
-    bytes(product_name, 'ascii') + b'\0' + \
-    bytes(serial_number, 'ascii') + b'\0'
+hw_key= bytes(product_name, 'ascii') + b'\0' + \
+        bytes(serial_number, 'ascii') + b'\0'
 
 password_hardcoded=unhexlify('717cd72d0962bc4a2846138dbb2c24192512a76407065f383846139d4bec2033')
-gwk_sign_hardcoded=unhexlify('47574b5f5349474e3a4c76b76a97981d1274247e166610e77f4d9c9d07d3c728e532916bdd28b454')
+gwk_sign_hardcoded=unhexlify('3a4c76b76a97981d1274247e166610e77f4d9c9d07d3c728e532916bdd28b454')
 
-def hmac2(key, msg):
-    p1=hmac.new(key, msg, sha256).digest()
-    p2=hmac.new(key, p1+msg, sha256).digest()
-    return p2
+def prf(secret, seed, length):
+    n = (length + 0x20 - 1) // 0x20
+    
+    res = b''
+    a = hmac.new(secret, seed, sha256).digest()
+
+    while n > 0:
+        res += hmac.new(secret, a+seed, sha256).digest()
+        a = hmac.new(secret, a, sha256).digest()
+        n -= 1
+
+    return res[:length]
 
 # pre-TLS keys
-psk_encryption_key=hmac2(password_hardcoded, hw_key)
-psk_validation_key=hmac2(psk_encryption_key, gwk_sign_hardcoded)
+psk_encryption_key=prf(password_hardcoded, b'GWK' + hw_key, 0x20)
+psk_validation_key=prf(psk_encryption_key, b'GWK_SIGN' + gwk_sign_hardcoded, 0x20)
+
+def hs_key():
+    key=password_hardcoded[:0x10]
+    seed=password_hardcoded[0x10:] + b'\xaa'*2 
+    hs_key=prf(key, b'HS_KEY_PAIR_GEN' + seed, 0x20)
+    return int(hs_key[::-1].hex(), 16)
 
 def with_2bytes_size(chunk):
     return pack('>H', len(chunk)) + chunk
@@ -58,18 +71,6 @@ def pad(b):
 def unpad(b):
     return b[:-1-b[-1]]
 
-def prf(secret, seed, length):
-    n = (length + 0x20 - 1) // 0x20
-    
-    res = b''
-    a = hmac.new(secret, seed, sha256).digest()
-
-    while n > 0:
-        res += hmac.new(secret, a+seed, sha256).digest()
-        a = hmac.new(secret, a, sha256).digest()
-        n -= 1
-
-    return res[:length]
 
 # TODO assert the right state transitions
 class Tls():
@@ -80,22 +81,17 @@ class Tls():
         self.secure_rx = False
         self.secure_tx = False
 
-    def read_flash(self, which, addr, size):
-        cmd = pack('<BBBHLL', 0x40, which, 1, 0, addr, size)
+    def cmd(self, cmd):
         if self.secure_rx and self.secure_tx:
             rsp=self.app(cmd)
         else:
             rsp=self.usb.cmd(cmd)
-        assert_status(rsp)
-        sz, = unpack('<xxLxx', rsp[:8])
 
-        return rsp[8:8+sz]
+        return rsp
 
     def open(self):
         self.secure_rx = False
         self.secure_tx = False
-
-        self.parseTlsFlash(self.read_flash(1, 0, 0x1000))
 
         self.handshake_hash = sha256()
 

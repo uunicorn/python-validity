@@ -170,16 +170,16 @@ class Db():
         if len(name) > 0:
             name += b'\0'
 
-        return parse_user_storage(self.tls.app(pack('<BHH', 0x4b, dbid, len(name)) + name))
+        return parse_user_storage(self.tls.cmd(pack('<BHH', 0x4b, dbid, len(name)) + name))
 
     def get_user(self, dbid):
-        return parse_user(self.tls.app(pack('<BHHH', 0x4a, dbid, 0, 0)))
+        return parse_user(self.tls.cmd(pack('<BHHH', 0x4a, dbid, 0, 0)))
 
     def lookup_user(self, identity):
         stg = self.get_user_storage(name='StgWindsor')
         data = identity_to_bytes(identity)
         
-        rsp = self.tls.app(pack('<BHHH', 0x4a, 0, stg.dbid, len(data)) + data)
+        rsp = self.tls.cmd(pack('<BHHH', 0x4a, 0, stg.dbid, len(data)) + data)
         rc, = unpack('<H', rsp[:2])
 
         if rc == 0x04b3:
@@ -188,7 +188,7 @@ class Db():
             return parse_user(rsp)
 
     def get_record_value(self, dbid):
-        rsp = self.tls.app(pack('<BH', 0x49, dbid))
+        rsp = self.tls.cmd(pack('<BH', 0x49, dbid))
         assert_status(rsp)
 
         rec = DbRecord()
@@ -198,7 +198,7 @@ class Db():
         return rec
 
     def get_record_children(self, dbid):
-        rsp = self.tls.app(pack('<BH', 0x46, dbid))
+        rsp = self.tls.cmd(pack('<BH', 0x46, dbid))
         assert_status(rsp)
         
         rec = DbRecord()
@@ -212,13 +212,13 @@ class Db():
         return rec
 
     def del_record(self, dbid):
-        assert_status(self.tls.app(pack('<BH', 0x48, dbid)))
+        assert_status(self.tls.cmd(pack('<BH', 0x48, dbid)))
 
 
     def new_record(self, parent, typ, storage, data):
-        assert_status(self.tls.app(b'\x45'))
-        assert_status(self.tls.app(wtf_hardcoded))
-        rsp = self.tls.app(pack('<BHHHH', 0x47, parent, typ, storage, len(data)) + data)
+        assert_status(self.tls.cmd(b'\x45'))
+        assert_status(self.tls.cmd(wtf_hardcoded))
+        rsp = self.tls.cmd(pack('<BHHHH', 0x47, parent, typ, storage, len(data)) + data)
         assert_status(rsp)
         recid, = unpack('<H', rsp[2:])
         self.flush_changes()
@@ -245,7 +245,7 @@ class Db():
         return rec
 
     def flush_changes(self):
-        assert_status(self.tls.app(b'\x1a'))
+        assert_status(self.tls.cmd(b'\x1a'))
 
     def dump_all(self):
         stg = self.get_user_storage(name='StgWindsor')
@@ -254,4 +254,17 @@ class Db():
             print('%2d: User %s with %d fingers:' % (u.dbid, repr(u.identity), len(u.fingers)))
             for f in u.fingers:
                 print('    %2d: %02x (%s)' % (f['dbid'], f['subtype'], subtype_to_string(f['subtype'])))
+
+    def erase_flash(self, which):
+        self.tls.cmd(wtf_hardcoded)
+        self.tls.cmd(pack('<BB', 0x3f, which))
+        self.flush_changes()
+
+    def read_flash(self, which, addr, size):
+        cmd = pack('<BBBHLL', 0x40, which, 1, 0, addr, size)
+        rsp=self.tls.cmd(cmd)
+        assert_status(rsp)
+        sz, = unpack('<xxLxx', rsp[:8])
+
+        return rsp[8:8+sz]
 
