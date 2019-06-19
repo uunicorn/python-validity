@@ -478,6 +478,7 @@ class Tls():
         iv, c = c[:AES.block_size], c[AES.block_size:]
         aes=AES.new(psk_encryption_key, AES.MODE_CBC, iv)
         m=aes.decrypt(c)
+        m=m[:-m[-1]] # unpad (standard this time)
 
         x, m = m[:0x20], m[0x20:]
         y, m = m[:0x20], m[0x20:]

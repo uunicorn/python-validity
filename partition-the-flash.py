@@ -325,6 +325,9 @@ def encrypt_key():
     d = unhexlify('%064x' % client_private)[::-1]
 
     m = x+y+d
+    l = 16 - (len(m) % 16)
+    m = m + bytes([l])*l
+
     iv = get_random_bytes(AES.block_size)
     aes = AES.new(psk_encryption_key, AES.MODE_CBC, iv)
     c = iv + aes.encrypt(m)
