@@ -371,7 +371,7 @@ def dump_flash():
 def read_hw_reg32(addr):
     rsp=tls.cmd(pack('<BLB', 7, addr, 4))
     assert_status(rsp)
-    rsp = rsp[2:]
+    rsp, = unpack('<L', rsp[2:])
     return rsp
 
 def write_hw_reg32(addr, val):

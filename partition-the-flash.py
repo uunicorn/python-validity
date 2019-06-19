@@ -20,7 +20,6 @@ flash_layout_hardcoded=[
     unhex('05 05 0300 00000400 00800000'), # ???
     unhex('06 06 0300 00800400 00800000'), # calibration data
     unhex('04 03 0500 00000500 00000300'), # template database
-#    unhex('08 08 0500 00000000 000000ff'), # <-- hack to make the whole flash contents readable
 ]
 
 enable_blob=unhex('''
