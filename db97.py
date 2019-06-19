@@ -268,3 +268,10 @@ class Db():
 
         return rsp[8:8+sz]
 
+    def write_flash(self, which, addr, buf):
+        self.tls.cmd(wtf_hardcoded)
+        cmd = pack('<BBBHLL', 0x41, which, 1, 0, addr, len(buf)) + buf
+        rsp=self.tls.cmd(cmd)
+        assert_status(rsp)
+        self.flush_changes()
+

@@ -4,11 +4,14 @@ from tls97 import *
 from hashlib import sha256
 from struct import pack
 from usb97 import *
+from Crypto.Random import get_random_bytes
+from Crypto.Cipher import AES
 from fastecdsa.encoding.der import DEREncoder
 from fastecdsa.curve import P256
 from fastecdsa.ecdsa import sign
 from fastecdsa.point import Point
 from fastecdsa.keys import gen_private_key, get_public_key
+from util import assert_status
 
 flash_layout_hardcoded=[
     #      id ?? acc  offset   size
@@ -19,19 +22,6 @@ flash_layout_hardcoded=[
     unhex('04 03 0500 00000500 00000300'), # template database
 #    unhex('08 08 0500 00000000 000000ff'), # <-- hack to make the whole flash contents readable
 ]
-
-blk3_hardcoded=unhex('''
-170000000001000001000000fcffffffffffffffffffffff00000000000000000000000001000000fffff
-fff0000000000000000000000000000000000000000000000000000000000000000000000004b60d2273e
-3cce3bf6b053ccb0061d65bc86987655bdebb3e7933aaad835c65a0000000000000000000000000000000
-0000000000000000000000000000000000000000096c298d84539a1f4a033eb2d817d0377f240a463e5e6
-bcf847422ce1f2d1176b00000000000000000000000000000000000000000000000000000000000000000
-0000000f551bf376840b6cbce5e316b5733ce2b169e0f7c4aebe78e9b7f1afee242e34f00000000000000
-0000000000000000000000000000000000000000000000000000000000512563fcc2cab9f3849e17a7adf
-ae6bcffffffffffffffff00000000ffffffff000000000000000000000000000000000000000000000000
-000000000000000000000000ffffffffffffffffffffffff00000000000000000000000001000000fffff
-fff000000000000000000000000000000000000000000000000000000000000000000000000
-''')
 
 enable_blob=unhex('''
 06020000013920c0cdd8e7e68d6ef897ee686fbf657f83b9514341e1d3c0835a28c9cd1ccd0016644f74d
@@ -330,6 +320,19 @@ def make_cert():
     msg += b'\0'*(444 - len(msg))
     return msg
 
+def encrypt_key():
+    x = unhexlify('%064x' % client_public.x)[::-1]
+    y = unhexlify('%064x' % client_public.y)[::-1]
+    d = unhexlify('%064x' % client_private)[::-1]
+
+    m = x+y+d
+    iv = get_random_bytes(AES.block_size)
+    aes = AES.new(psk_encryption_key, AES.MODE_CBC, iv)
+    c = iv + aes.encrypt(m)
+    sig = hmac.new(psk_validation_key, c, sha256).digest()
+    return b'\x02' + c + sig
+    
+
 def make_flash_params(flash_size, sector_size, erase_cmd):
     return pack('<LLxxBx', flash_size, sector_size, erase_cmd)
 
@@ -339,10 +342,17 @@ cmd = unhex('4f 0000 0000')
 cmd += with_hdr(0, make_flash_params(0x100000, 0x1000, 0x20)) 
 cmd += with_hdr(1, b''.join([i + b'\0'*4 + sha256(i).digest() for i in flash_layout_hardcoded]))
 cmd += with_hdr(5, make_cert())
-cmd += with_hdr(3, blk3_hardcoded)
+cmd += with_hdr(3, crt_hardcoded)
 
 usb=Usb()
 usb.trace_enabled=True
+
+tls=Tls(usb)
+tls.trace_enabled=True
+tls.handle_priv(encrypt_key())
+
+db=Db(tls)
+
 usb.open()
 usb.cmd(enable_blob)
 rsp=usb.cmd(unhex('3e'))
@@ -359,29 +369,44 @@ rsp=usb.cmd(unhex('3e'))
 #           05 05 0300 00000400 00800000
 #           06 06 0300 00800400 00800000
 #           04 03 0500 00000500 00000300 
-#rsp=usb.cmd(cmd)
-# ^ todo validate response
+rsp=usb.cmd(cmd)
+assert_status(rsp)
+rsp=rsp[2:]
+crt_len, rsp=rsp[:4], rsp[4:]
+crt_len, = unpack('<L', crt_len)
+tls.handle_cert(rsp[:crt_len])
+# ^ TODO - validate cert
+rsp = rsp[crt_len:]
+# ^ TODO - figure out what the rest of rsp means
+
 rsp=usb.cmd(unhex('01'))
+assert_status(rsp)
 # ^ get device info, contains firmware version which is needed to lookup pubkey for server cert validation
+
 rsp=usb.cmd(unhex('50'))
-# ^ response contains server cert -- TODO validate it
+# ^ TODO validate response
 # It should be signed by the firmware private key. 
 # The corresponding pub key is hardcoded for each fw revision in the synaWudfBioUsb.dll.
 # for my device it is: x=f727653b4e16ce0665a6894d7f3a30d7d0a0be310d1292a743671fdf69f6a8d3, y=a85538f8b6bec50d6eef8bd5f4d07a886243c58b2393948df761a84721a6ca94
+assert_status(rsp)
+rsp=rsp[2:]
+l,=unpack('<L', rsp[:4])
+tls.handle_ecdh(rsp[l-400:])
 
 rsp=usb.cmd(unhex('1a'))
+assert_status(rsp)
 
-tls=Tls(usb)
-db=Db(tls)
-# TODO -- explicitly set crypto params on tls object (they are not persisted on flash yet)
-#tls.open()
+tls.open()
 
 # Wipe newly created partitions clean
-#db.erase_flash(1)
-#db.erase_flash(2)
-#db.erase_flash(5)
-#db.erase_flash(6)
-#db.erase_flash(4)
+db.erase_flash(1)
+db.erase_flash(2)
+db.erase_flash(5)
+db.erase_flash(6)
+db.erase_flash(4)
 
 # Persist certs and keys on cert partition.
-#db.write_flash(1, ...)
+db.write_flash(1, 0, tls.makeTlsFlash())
+
+# Reboot
+tls.cmd(unhex('050200'))

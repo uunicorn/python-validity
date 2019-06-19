@@ -3,6 +3,7 @@ import hmac
 import sys
 from hashlib import sha256, md5, sha1
 from binascii import *
+from usb97 import unhex
 from struct import pack, unpack
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
@@ -23,6 +24,19 @@ hw_key= bytes(product_name, 'ascii') + b'\0' + \
 
 password_hardcoded=unhexlify('717cd72d0962bc4a2846138dbb2c24192512a76407065f383846139d4bec2033')
 gwk_sign_hardcoded=unhexlify('3a4c76b76a97981d1274247e166610e77f4d9c9d07d3c728e532916bdd28b454')
+
+crt_hardcoded=unhex('''
+170000000001000001000000fcffffffffffffffffffffff00000000000000000000000001000000fffff
+fff0000000000000000000000000000000000000000000000000000000000000000000000004b60d2273e
+3cce3bf6b053ccb0061d65bc86987655bdebb3e7933aaad835c65a0000000000000000000000000000000
+0000000000000000000000000000000000000000096c298d84539a1f4a033eb2d817d0377f240a463e5e6
+bcf847422ce1f2d1176b00000000000000000000000000000000000000000000000000000000000000000
+0000000f551bf376840b6cbce5e316b5733ce2b169e0f7c4aebe78e9b7f1afee242e34f00000000000000
+0000000000000000000000000000000000000000000000000000000000512563fcc2cab9f3849e17a7adf
+ae6bcffffffffffffffff00000000ffffffff000000000000000000000000000000000000000000000000
+000000000000000000000000ffffffffffffffffffffffff00000000000000000000000001000000fffff
+fff000000000000000000000000000000000000000000000000000000000000000000000000
+''')
 
 def prf(secret, seed, length):
     n = (length + 0x20 - 1) // 0x20
@@ -45,6 +59,7 @@ def hs_key():
     key=password_hardcoded[:0x10]
     seed=password_hardcoded[0x10:] + b'\xaa'*2 
     hs_key=prf(key, b'HS_KEY_PAIR_GEN' + seed, 0x20)
+    print(hs_key.hex())
     return int(hs_key[::-1].hex(), 16)
 
 def with_2bytes_size(chunk):
@@ -383,6 +398,8 @@ class Tls():
             if id == 0xffff:
                 break
 
+            self.trace('block id %04x (%d bytes)' % (id, sz))
+
             m=sha256()
             m.update(body)
 
@@ -395,12 +412,31 @@ class Tls():
                 self.handle_ecdh(body)
             elif id == 3:
                 self.handle_cert(body)
+            elif id == 0:
+                self.handle_empty(body)
             elif id == 1:
                 self.handle_empty(body)
             elif id == 2:
                 self.handle_empty(body)
             else:
                 self.trace('unhandled block id %04x (%d bytes): %s' % (id, sz, hexlify(body)))
+
+    def makeTlsFlashBlock(self, id, body):
+        m=sha256()
+        m.update(body)
+        hdr = pack('<HH', id, len(body))
+        return hdr+m.digest()+body
+
+    def makeTlsFlash(self):
+        b = self.makeTlsFlashBlock(0, b'\0')
+        b+= self.makeTlsFlashBlock(4, self.priv_blob)
+        b+= self.makeTlsFlashBlock(3, self.tls_cert)
+        b+= self.makeTlsFlashBlock(5, crt_hardcoded)
+        b+= self.makeTlsFlashBlock(1, b'\0' * 0x100)
+        b+= self.makeTlsFlashBlock(2, b'\0' * 0x100)
+        b+= self.makeTlsFlashBlock(6, self.ecdh_blob)
+        b+= b'\xff' * (0x1000 - len(b))
+        return b
 
     def handle_empty(self, body):
         if body != b'\0' * len(body):
@@ -413,6 +449,7 @@ class Tls():
 
     def handle_ecdh(self, body):
         # TODO check the signature
+        self.ecdh_blob = body
         x = body[0x8:0x8+0x20]
         y = body[0x4c:0x4c+0x20]
 
@@ -428,6 +465,7 @@ class Tls():
         
 
     def handle_priv(self, body):
+        self.priv_blob = body
         prefix, body = body[0], body[1:]
         if prefix != 2:
             raise Exception('Unknown private key prefix %02x' % prefix)
