@@ -3,7 +3,7 @@ import hmac
 import sys
 from hashlib import sha256, md5, sha1
 from binascii import *
-from usb97 import unhex
+from usb97 import unhex, usb
 from struct import pack, unpack
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
@@ -59,7 +59,6 @@ def hs_key():
     key=password_hardcoded[:0x10]
     seed=password_hardcoded[0x10:] + b'\xaa'*2 
     hs_key=prf(key, b'HS_KEY_PAIR_GEN' + seed, 0x20)
-    print(hs_key.hex())
     return int(hs_key[::-1].hex(), 16)
 
 def with_2bytes_size(chunk):
@@ -499,3 +498,4 @@ class Tls():
         self.pub_key = Point(x, y, P256)
         self.priv_key = d
 
+tls = Tls(usb)

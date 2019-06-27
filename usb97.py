@@ -1,16 +1,12 @@
 
-import re
-import usb.core
+import usb.core as ucore
 from binascii import *
-from util import assert_status
+from util import assert_status, unhex
 from struct import unpack
 from usb.util import claim_interface, release_interface
 from queue import Queue
 from threading import Thread
 from usb.core import USBError
-
-def unhex(x):
-    return unhexlify(re.sub('\W', '', x))
 
 init_hardcoded=unhex('''
 06020000015cb560afa595d0dcf4fca09ebb69301e2b9e24a5dfb6f2602833427d3bd65222c418ff15b54587ab2854c4fe9aea74fa55567
@@ -54,8 +50,8 @@ class Usb():
             pass
 
     def open(self):
-        self.dev = usb.core.find(idVendor=0x138a, idProduct=0x0097)
-        self.dev.default_timeout = 5000
+        self.dev = ucore.find(idVendor=0x138a, idProduct=0x0097)
+        self.dev.default_timeout = 15000
         self.thread = Thread(target=lambda: self.int_thread())
         self.thread.daemon = True
         self.thread.start()
@@ -120,3 +116,4 @@ class Usb():
         if self.trace_enabled:
             print(s)
 
+usb=Usb()
