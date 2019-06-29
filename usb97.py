@@ -85,7 +85,7 @@ class Usb():
 
     def read_82(self):
         try:
-            resp = self.dev.read(130, 100*1024, 100)
+            resp = self.dev.read(130, 1024*1024, timeout=10000)
             resp = bytes(resp)
             self.trace('<130< %s' % hexlify(resp).decode())
             return resp

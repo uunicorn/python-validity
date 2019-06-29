@@ -1,9 +1,13 @@
 
 from tls97 import tls
+from usb97 import usb
+from db97 import db, subtype_to_string
+from time import sleep
 from struct import pack, unpack
 from binascii import hexlify, unhexlify
 from util import assert_status, unhex
 from hw_tables import dev_info_lookup
+from blobs import identify_prg, enroll_prg
 
 
 def glow_start_scan():

@@ -4,6 +4,8 @@ from tls97 import tls
 from util import assert_status
 from struct import pack, unpack
 from binascii import hexlify, unhexlify
+from blobs import db_write_enable
+from flash import flush_changes
 from sid import *
 
 class UserStorage():
@@ -117,25 +119,22 @@ class DbRecord():
             
 
 class Db():
-    def __init__(self, tls):
-        self.tls = tls
-
     def get_user_storage(self, dbid=0, name=''):
         name=name.encode()
 
         if len(name) > 0:
             name += b'\0'
 
-        return parse_user_storage(self.tls.cmd(pack('<BHH', 0x4b, dbid, len(name)) + name))
+        return parse_user_storage(tls.cmd(pack('<BHH', 0x4b, dbid, len(name)) + name))
 
     def get_user(self, dbid):
-        return parse_user(self.tls.cmd(pack('<BHHH', 0x4a, dbid, 0, 0)))
+        return parse_user(tls.cmd(pack('<BHHH', 0x4a, dbid, 0, 0)))
 
     def lookup_user(self, identity):
         stg = self.get_user_storage(name='StgWindsor')
         data = identity_to_bytes(identity)
         
-        rsp = self.tls.cmd(pack('<BHHH', 0x4a, 0, stg.dbid, len(data)) + data)
+        rsp = tls.cmd(pack('<BHHH', 0x4a, 0, stg.dbid, len(data)) + data)
         rc, = unpack('<H', rsp[:2])
 
         if rc == 0x04b3:
@@ -144,7 +143,7 @@ class Db():
             return parse_user(rsp)
 
     def get_record_value(self, dbid):
-        rsp = self.tls.cmd(pack('<BH', 0x49, dbid))
+        rsp = tls.cmd(pack('<BH', 0x49, dbid))
         assert_status(rsp)
 
         rec = DbRecord()
@@ -154,7 +153,7 @@ class Db():
         return rec
 
     def get_record_children(self, dbid):
-        rsp = self.tls.cmd(pack('<BH', 0x46, dbid))
+        rsp = tls.cmd(pack('<BH', 0x46, dbid))
         assert_status(rsp)
         
         rec = DbRecord()
@@ -168,16 +167,16 @@ class Db():
         return rec
 
     def del_record(self, dbid):
-        assert_status(self.tls.cmd(pack('<BH', 0x48, dbid)))
+        assert_status(tls.cmd(pack('<BH', 0x48, dbid)))
 
 
     def new_record(self, parent, typ, storage, data):
-        assert_status(self.tls.cmd(b'\x45'))
-        assert_status(self.tls.cmd(db_write_enable))
-        rsp = self.tls.cmd(pack('<BHHHH', 0x47, parent, typ, storage, len(data)) + data)
+        assert_status(tls.cmd(b'\x45'))
+        assert_status(tls.cmd(db_write_enable))
+        rsp = tls.cmd(pack('<BHHHH', 0x47, parent, typ, storage, len(data)) + data)
         assert_status(rsp)
         recid, = unpack('<H', rsp[2:])
-        self.flush_changes()
+        flush_changes()
         return recid
 
     def new_user(self, identity):
@@ -208,5 +207,5 @@ class Db():
             for f in u.fingers:
                 print('    %2d: %02x (%s)' % (f['dbid'], f['subtype'], subtype_to_string(f['subtype'])))
 
-db = Db(tls)
+db = Db()
 
