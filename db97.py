@@ -33,6 +33,11 @@ def subtype_to_string(s):
     return 'WINBIO_FINGER_UNSPECIFIED_POS_%02d' % (s - 0xf5 + 1)
 
 def parse_user_storage(rsp):
+    rc, = unpack('<H', rsp[:2])
+
+    if rc == 0x04b3:
+        return None
+
     assert_status(rsp[:2])
     rsp=rsp[2:]
 
