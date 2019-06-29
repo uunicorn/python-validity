@@ -5,6 +5,7 @@ from struct import pack, unpack
 from binascii import hexlify, unhexlify
 from tls97 import tls
 from usb97 import usb, unhex
+from sensor import enroll, identify
 from db97 import db
 from flash import read_flash
 from sid import *
