@@ -1,5 +1,5 @@
 
-from util import unhex
+from .util import unhex
 
 reset_blob=unhex('''
 06020000013920c0cdd8e7e68d6ef897ee686fbf657f83b9514341e1d3c0835a28c9cd1ccd0016644f74d

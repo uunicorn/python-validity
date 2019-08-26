@@ -1,10 +1,10 @@
 
-from tls97 import tls
+from .tls import tls
 from struct import pack, unpack
 from binascii import hexlify, unhexlify
-from util import assert_status, unhex
-from blobs import db_write_enable
-from hw_tables import flash_ic_table_lookup
+from .util import assert_status, unhex
+from .blobs import db_write_enable
+from .hw_tables import flash_ic_table_lookup
 
 class FlashInfo():
     def __init__(self, ic, blocks, unknown0, blocksize, unknown1, partitions):
@@ -120,7 +120,7 @@ def write_flash_all(partition, ptr, buf):
 
 def read_flash_all(partition, start, end):
     bs = 0x1000
-    blocks = [db.read_flash(partition, addr, bs) for addr in range(start, end, bs)]
+    blocks = [read_flash(partition, addr, bs) for addr in range(start, end, bs)]
     return b''.join(blocks)
 
 def write_fw_signature(partition, signature):

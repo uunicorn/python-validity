@@ -1,13 +1,13 @@
 
-from tls97 import tls
-from usb97 import usb
-from db97 import db, subtype_to_string
+from .tls import tls
+from .usb import usb
+from .db import db, subtype_to_string
 from time import sleep
 from struct import pack, unpack
 from binascii import hexlify, unhexlify
-from util import assert_status, unhex
-from hw_tables import dev_info_lookup
-from blobs import identify_prg, enroll_prg
+from .util import assert_status, unhex
+from .hw_tables import dev_info_lookup
+from .blobs import identify_prg, enroll_prg, reset_blob
 
 
 def glow_start_scan():
@@ -278,6 +278,11 @@ def write_hw_reg32(addr, val):
 
 def reboot():
     assert_status(tls.cmd(unhex('050200')))
+
+def factory_reset():
+    assert_status(usb.cmd(reset_blob))
+    assert_status(usb.cmd(b'\x10' + b'\0'*0x61))
+    reboot()
 
 def identify_sensor():
     rsp=tls.cmd(b'\x75')

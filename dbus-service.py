@@ -6,8 +6,8 @@ from pydbus.generic import signal
 import pkg_resources
 from time import sleep
 from prototype import *
-from db97 import subtype_to_string
-from sensor import cancel_capture
+from proto97.db import subtype_to_string
+from proto97.sensor import cancel_capture
 import pwd
 
 print("Starting up")

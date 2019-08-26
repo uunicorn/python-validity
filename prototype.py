@@ -1,14 +1,10 @@
 
-from util import assert_status
-from time import sleep
-from struct import pack, unpack
-from binascii import hexlify, unhexlify
-from tls97 import tls
-from usb97 import usb, unhex
-from sensor import enroll, identify
-from db97 import db
-from flash import read_flash
-from sid import *
+from proto97.tls import tls
+from proto97.usb import usb
+from proto97.db import db
+from proto97.flash import read_flash
+from proto97.sensor import *
+from proto97.sid import *
 
 def open97():
     usb.open()

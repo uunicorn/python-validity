@@ -1,12 +1,12 @@
 
-from util import unhex
-from tls97 import tls
-from util import assert_status
+from .util import unhex
+from .tls import tls
+from .util import assert_status
 from struct import pack, unpack
 from binascii import hexlify, unhexlify
-from blobs import db_write_enable
-from flash import flush_changes
-from sid import *
+from .blobs import db_write_enable
+from .flash import flush_changes
+from .sid import *
 
 class UserStorage():
     def __init__(self, dbid, name):
@@ -131,6 +131,14 @@ class Db():
             name += b'\0'
 
         return parse_user_storage(tls.cmd(pack('<BHH', 0x4b, dbid, len(name)) + name))
+
+    def new_user_storate(self):
+        db.new_record(1, 4, 3, b'StgWindsor\0')
+
+    def get_storage_data(self):
+        stg = self.get_user_storage(name='StgWindsor')
+        rc = self.get_record_children(stg.dbid).children
+        return [i['dbid'] for i in rc if i['type'] == 8] # 8 == "data" type
 
     def get_user(self, dbid):
         return parse_user(tls.cmd(pack('<BHHH', 0x4a, dbid, 0, 0)))

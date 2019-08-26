@@ -3,7 +3,7 @@ import hmac
 import sys
 from hashlib import sha256, md5, sha1
 from binascii import *
-from usb97 import unhex, usb
+from .usb import unhex, usb
 from struct import pack, unpack
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
@@ -12,7 +12,7 @@ from fastecdsa.point import Point
 from fastecdsa.keys import gen_private_key, get_public_key
 from fastecdsa.ecdsa import sign
 from fastecdsa.encoding.der import DEREncoder
-from util import assert_status
+from .util import assert_status
 import pickle
 
 
@@ -91,6 +91,9 @@ class Tls():
     
     def __init__(self, usb):
         self.usb = usb
+        self.reset()
+
+    def reset(self):
         self.trace_enabled = False
         self.secure_rx = False
         self.secure_tx = False

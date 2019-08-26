@@ -1,7 +1,7 @@
 
 import usb.core as ucore
 from binascii import *
-from util import assert_status, unhex
+from .util import assert_status, unhex
 from struct import unpack
 from usb.util import claim_interface, release_interface
 from queue import Queue
