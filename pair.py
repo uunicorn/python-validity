@@ -9,6 +9,8 @@ from proto97.upload_fwext import upload_fwext
 from proto97.calibrate import calibrate
 from proto97.init_db import init_db
 
+#usb.trace_enabled=True
+#tls.trace_enabled=True
 
 def restart():
     sleep(2)

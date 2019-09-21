@@ -25,9 +25,6 @@ def upload_fwext():
     fwext=fwext[fwext.index(b'\x1a')+1:]
     fwext, signature = fwext[:-0x100], fwext[-0x100:]
 
-    # get fwext header info
-    rsp=tls.cmd(unhexlify('4302')) #  should fail 'cause no fwext uploaded yet
-
     fwi=get_fw_info(2)
     if fwi != None:
         raise Exception('FW is already present (version %d.%d (%s))' % (fwi.major, fwi.minor, ctime(fwi.buildtime)))
