@@ -85,7 +85,6 @@ def partition_flash(layout, client_public):
     crt_len, rsp=rsp[:4], rsp[4:]
     crt_len, = unpack('<L', crt_len)
     tls.handle_cert(rsp[:crt_len])
-    # ^ TODO - validate cert
     rsp = rsp[crt_len:]
     # ^ TODO - figure out what the rest of rsp means
 
@@ -102,17 +101,21 @@ def init_flash():
     # ^ get device info, contains firmware version which is needed to lookup pubkey for server cert validation
 
     rsp=usb.cmd(unhex('50'))
-    # ^ TODO validate the response. It is very insecure to simply trust any device to do the auth.
-    # It should be signed by the firmware private key. 
-    # The corresponding pub key is hardcoded for each fw revision in the synaWudfBioUsb.dll.
-    # for my device it is: x=f727653b4e16ce0665a6894d7f3a30d7d0a0be310d1292a743671fdf69f6a8d3,
-    #                      y=a85538f8b6bec50d6eef8bd5f4d07a886243c58b2393948df761a84721a6ca94
     assert_status(rsp)
-    rsp=rsp[2:]
-    l,=unpack('<L', rsp[:4])
     flush_changes()
 
-    tls.handle_ecdh(rsp[l-400:]) # FIXME not sure offsets are calculated this way
+    rsp=rsp[2:]
+    l,=unpack('<L', rsp[:4])
+
+    if len(rsp) != l:
+        raise Exception('Length mismatch')
+
+    zeroes, rsp = rsp[4:-400], rsp[-400:]
+
+    if zeroes != b'\0' * len(zeroes):
+        raise Exception('Expected zeroes')
+
+    tls.handle_ecdh(rsp)
     tls.handle_priv(encrypt_key(client_private, client_public))
     tls.open()
 

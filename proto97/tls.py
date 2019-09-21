@@ -10,7 +10,7 @@ from Crypto.Random import get_random_bytes
 from fastecdsa.curve import P256
 from fastecdsa.point import Point
 from fastecdsa.keys import gen_private_key, get_public_key
-from fastecdsa.ecdsa import sign
+from fastecdsa.ecdsa import sign, verify
 from fastecdsa.encoding.der import DEREncoder
 from .util import assert_status
 import pickle
@@ -450,10 +450,10 @@ class Tls():
         self.trace('TLS cert blob: %s' % hexlify(self.tls_cert))
 
     def handle_ecdh(self, body):
-        # TODO check the signature
         self.ecdh_blob = body
-        x = body[0x8:0x8+0x20]
-        y = body[0x4c:0x4c+0x20]
+        key, signature = body[:0x90], body[0x90:]
+        x = key[0x8:0x8+0x20]
+        y = key[0x4c:0x4c+0x20]
 
         x, y = [int(hexlify(i[::-1]), 0x10) for i in [x, y]]
 
@@ -464,6 +464,24 @@ class Tls():
         self.trace('ECDH params:')
         self.trace('x=0x%x' % x)
         self.trace('y=0x%x' % y)
+
+        l, signature = signature[:4], signature[4:]
+        l, = unpack('<L', l)
+        signature, zeroes = signature[:l], signature[l:]
+
+        if zeroes != b'\0'*len(zeroes):
+            raise Exception('Zeroes expected')
+
+        # The following pub key is hardcoded for each fw revision in the synaWudfBioUsb.dll.
+        # Corresponding private key should only be known to a genuine Synaptic device.
+        fwpub=Point(
+            0xf727653b4e16ce0665a6894d7f3a30d7d0a0be310d1292a743671fdf69f6a8d3, 
+            0xa85538f8b6bec50d6eef8bd5f4d07a886243c58b2393948df761a84721a6ca94, P256)
+
+        signature=DEREncoder().decode_signature(signature)
+
+        if not verify(signature, key, fwpub):
+            raise Exception('Untrusted device')
         
 
     def handle_priv(self, body):

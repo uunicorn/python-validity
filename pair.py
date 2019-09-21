@@ -13,7 +13,8 @@ from proto97.init_db import init_db
 #tls.trace_enabled=True
 
 def restart():
-    sleep(2)
+    print('Sleeping...')
+    sleep(3)
     tls.reset()
     usb.open()
     usb.send_init()
