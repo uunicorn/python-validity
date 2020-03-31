@@ -3,8 +3,16 @@ Validity fingerprint sensor library.
 Originally designed to capture some of my findings for 138a:0097, but if you manage to get it working for some other Validity sensor - pull requests are welcome.
 
 ## Setting up
-Use Wine to install official Lenovo device driver. The only reason you need to do this is to find 6_07f_lenovo_mis.xpfwext and copy it to 
-this project location. This file contains firmware and without it the pairing wont work. You will not need wine after this.
+Use Wine to extract [official Lenovo device driver](https://support.lenovo.com/es/es/downloads/DS120491) (also [part of the SCCM package](https://support.lenovo.com/ec/th/downloads/DS112113)). The only reason you need to do this is to find `6_07f_lenovo_mis.xpfwext` and copy it to this project location.
+
+You can just install that .exe and your file will be in `$WINEPREFIX/drive_c/DRIVERS/WIN/FPR/WBF_Drivers/6_07f_Lenovo.xpfwext` in case you use the device driver, or in 
+`$WINEPREFIX/drive_c/DRIVERS/SCCM/tp_t460s_*/*/Security/MT7FP22W/6_07f_Lenovo.xpfwext` if you used the SCCM package.
+
+Otherwise just use [innounp](https://sourceforge.net/projects/innounp/files/latest/download) and extract the exe file (`n1cgn08w.exe` in the device driver case or `tp_t460s_*.exe` in the SSCM one) with a command such as:
+
+       WINEPREFIX=$XDG_RUNTIME_DIR/tmpwine wine ./innounp.exe -x -e n1cgn08w.exe 6_07f_Lenovo.xpfwext
+
+This file contains firmware and without it the pairing wont work. You will not need wine after this.
 
 To install Python dependencies run
 ```
