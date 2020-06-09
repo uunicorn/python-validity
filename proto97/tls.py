@@ -133,6 +133,7 @@ class Tls():
             print(s)
 
     def app(self, b):
+        b = b() if callable(b) else b
         return self.parse_tls_response(self.usb.cmd(self.make_app_data(b)))
 
     def update_neg(self, b):
