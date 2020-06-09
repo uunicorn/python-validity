@@ -1,6 +1,7 @@
 
 from binascii import hexlify, unhexlify
 from time import ctime
+from os.path import basename
 
 from .tls import tls
 from .usb import usb
@@ -8,7 +9,15 @@ from .sensor import reboot, write_hw_reg32, read_hw_reg32, identify_sensor
 from .flash import flush_changes, read_flash, erase_flash, write_flash_all, write_fw_signature, get_fw_info
 from .util import assert_status
 
-def upload_fwext():
+
+def default_fwext_name():
+    if usb.usb_dev().idVendor == 0x138a:
+        if usb.usb_dev().idProduct == 0x0090:
+            return '6_07f_Lenovo.xpfwext'
+        elif usb.usb_dev().idProduct == 0x0097:
+            return '6_07f_lenovo_mis.xpfwext'
+
+def upload_fwext(fw_path=None):
     # no idea what this is:
     write_hw_reg32(0x8000205c, 7)
     if read_hw_reg32(0x80002080) != 2:
@@ -19,7 +28,14 @@ def upload_fwext():
     # ^ TODO -- what is the real reason to detect HW at this stage?
     #           just a guess: perhaps it is used to construct fwext filename
 
-    with open('6_07f_lenovo_mis.xpfwext', 'rb') as f:
+    default_name = default_fwext_name()
+    if not fw_path:
+        fw_path = default_name
+    elif basename(fw_path) != default_name:
+        print('WARNING: Your device fw is supposed to be called {}'.format(
+            default_name))
+
+    with open(fw_path, 'rb') as f:
         fwext=f.read()
 
     fwext=fwext[fwext.index(b'\x1a')+1:]
