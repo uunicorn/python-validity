@@ -18,6 +18,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import argparse
 import os
 import subprocess
 import sys
@@ -59,7 +60,8 @@ DEFAULT_FW_NAMES = {
 
 
 class VFSInitializer():
-    def __init__(self, usb_dev, dev_type):
+    def __init__(self, args, usb_dev, dev_type):
+        self.args = args
         self.usb_dev = usb_dev
         self.dev_type = dev_type
         self.dev_str = repr(usb_dev)
@@ -67,6 +69,9 @@ class VFSInitializer():
         print('Found device {}'.format(self.dev_str))
 
         try:
+            if self.args.simulate_virtualbox:
+                raise(Exception())
+
             with open('/sys/class/dmi/id/product_name', 'r') as node:
                 self.product_name = node.read().strip()
             with open('/sys/class/dmi/id/product_serial', 'r') as node:
@@ -74,6 +79,12 @@ class VFSInitializer():
         except:
             self.product_name = 'VirtualBox'
             self.product_serial = '0'
+
+        if self.args.host_product:
+            self.product_name = self.args.host_product
+
+        if self.args.host_serial:
+            self.product_serial = self.args.host_serial
 
         vfs_tls.set_hwkey(product_name=self.product_name,
             serial_number=self.product_serial)
@@ -168,14 +179,19 @@ class VFSInitializer():
         self.sleep()
         self.restart()
 
-        print('Calibrating, re-using calib-data.bin if any...')
-        if os.path.exists('calib-data.bin'):
-            calibrate(calib_data_path='calib-data.bin')
+        if self.args.calibration_data:
+            calib_data_file = self.args.calibration_data.name
+        else:
+            calib_data_file = 'calib-data.bin'
+
+        print('Calibrating, re-using {}, if any...', calib_data_file)
+        if os.path.exists(calib_data_file):
+            calibrate(calib_data_path=calib_data_file)
         else:
             try:
-                calib_data = os.path.join(tempfile.mkdtemp(), 'calib-data.bin')
-                calibrate(calib_data_path=calib_data)
-                print('Calibration data saved at {}'.format(calib_data))
+                calib_data_file = os.path.join(tempfile.mkdtemp(), 'calib-data.bin')
+                calibrate(calib_data_path=calib_data_file)
+                print('Calibration data saved at {}'.format(calib_data_file))
             except Exception as e:
                 print('Calibration failed using device data ({}), ' \
                       'You can try loading a local `calib-data.bin` blob, ' \
@@ -190,6 +206,18 @@ class VFSInitializer():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--firmware-path', type=argparse.FileType('r'))
+    parser.add_argument('--calibration-data', type=argparse.FileType('r'))
+    parser.add_argument('--host-product')
+    parser.add_argument('--host-serial')
+    parser.add_argument('--simulate-virtualbox', action='store_true')
+
+    args = parser.parse_args()
+
+    if args.simulate_virtualbox and (args.host_product or args.host_serial):
+        parser.error("--simulate-virtualbox is incompatible with host params.")
+
     if os.geteuid() != 0:
         raise Exception('This script needs to be executed as root')
 
@@ -210,10 +238,13 @@ if __name__ == "__main__":
         print('Impossible to run innoextract: {}'.format(e))
         sys.exit(1)
 
-    vfs_initializer = VFSInitializer(usb_dev, dev_type)
+    vfs_initializer = VFSInitializer(args, usb_dev, dev_type)
 
     with tempfile.TemporaryDirectory() as fwdir:
-        fwpath = vfs_initializer.download_and_extract_fw(fwdir)
+        if args.firmware_path:
+            fwpath = args.firmware_path.name
+        else:
+            fwpath = vfs_initializer.download_and_extract_fw(fwdir)
 
         input('The device will be now reset to factory and associated to the ' \
                 'current laptop.\nPress Enter to continue (or Ctrl+C to cancel)...')
