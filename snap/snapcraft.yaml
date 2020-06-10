@@ -1,4 +1,4 @@
-name: validity-sensors-initializer
+name: validity-sensors-tools
 base: core20
 version: '0.5'
 summary: A Linux tool to flash and pair Validity fingerprint sensors 009x
@@ -65,7 +65,7 @@ parts:
       snap-launcher.sh: bin/snap-launcher.sh
 
 apps:
-  validity-sensors-initializer:
+  initializer:
     command: bin/snap-launcher.sh
     plugs:
       - raw-usb

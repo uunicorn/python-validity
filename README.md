@@ -49,16 +49,19 @@ with all its dependencies as snap.
 To do so:
 
 ```bash
-sudo snap install validity-sensors-initializer
+sudo snap install validity-sensors-tools
 
 # Give it access to the usb devices
-sudo snap connect validity-sensors-initializer:raw-usb
+sudo snap connect validity-sensors-tools:raw-usb
 
 # Initialize the device
-sudo validity-sensors-initializer
+sudo validity-sensors-tools.initializer
+
+# Test the device
+sudo validity-sensors-tools.led_test
 ```
 
-[![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-black.svg)](https://snapcraft.io/validity-sensors-initializer)
+[![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-black.svg)](https://snapcraft.io/validity-sensors-tools)
 
 ---
 
