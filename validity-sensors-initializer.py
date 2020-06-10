@@ -168,8 +168,18 @@ class VFSInitializer():
         self.sleep()
         self.restart()
 
-        print('Calibrating...')
-        calibrate()
+        print('Calibrating, re-using calib-data.bin if any...')
+        if os.path.exists('calib-data.bin'):
+            calibrate(calib_data_path='calib-data.bin')
+        else:
+            try:
+                calib_data = os.path.join(tempfile.mkdtemp(), 'calib-data.bin')
+                calibrate(calib_data_path=calib_data)
+                print('Calibration data saved at {}'.format(calib_data))
+            except Exception as e:
+                print('Calibration failed using device data ({}), ' \
+                      'You can try loading a local `calib-data.bin` blob, ' \
+                      'the device should work anyway, so skipping...'.format(e))
 
         print('Init database...')
         init_db()
