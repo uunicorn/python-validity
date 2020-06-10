@@ -75,7 +75,6 @@ def calibrate(calib_data_path='calib-data.bin'):
 
         rsp=tls.cmd(calibrate_prg)
         assert_status(rsp)
-        print(rsp.hex())
         # ^ TODO check what the rest of the rsp means
 
         calib_data=usb.read_82()
