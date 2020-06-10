@@ -42,8 +42,14 @@ class VFS(Enum):
     DEV_97 = 0x0097
 
 DEFAULT_URIS = {
-    VFS.DEV_90: 'https://download.lenovo.com/pccbbs/mobiles/n1cgn08w.exe',
-    VFS.DEV_97: 'https://download.lenovo.com/pccbbs/mobiles/n1mgf03w.exe',
+    VFS.DEV_90: {
+        'driver': 'https://download.lenovo.com/pccbbs/mobiles/n1cgn08w.exe',
+        'referral': 'https://support.lenovo.com/us/en/downloads/DS120491',
+    },
+    VFS.DEV_97: {
+        'driver': 'https://download.lenovo.com/pccbbs/mobiles/n1mgf03w.exe',
+        'referral': 'https://download.lenovo.com/pccbbs/mobiles/n1mgf03w.exe'
+    }
 }
 
 DEFAULT_FW_NAMES = {
@@ -88,13 +94,17 @@ class VFSInitializer():
         self.open_device(init=True)
 
     def download_and_extract_fw(self, fwdir, fwuri=None):
-        fwuri = fwuri if fwuri else DEFAULT_URIS[self.dev_type]
+        fwuri = fwuri if fwuri else DEFAULT_URIS[self.dev_type]['driver']
         fwarchive = os.path.join(fwdir, 'fwinstaller.exe')
         fwname = DEFAULT_FW_NAMES[self.dev_type]
 
         print('Downloading {} to extract {}'.format(fwuri, fwname))
 
-        with urllib.request.urlopen(fwuri) as response:
+        req = urllib.request.Request(fwuri)
+        req.add_header('Referer', DEFAULT_URIS[self.dev_type].get('referral', ''))
+        req.add_header('User-Agent', 'Mozilla/5.0 (X11; U; Linux)')
+
+        with urllib.request.urlopen(req) as response:
             with open(fwarchive, 'wb') as out_file:
                 out_file.write(response.read())
 
