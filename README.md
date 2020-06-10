@@ -58,6 +58,8 @@ sudo snap connect validity-sensors-initializer:raw-usb
 sudo validity-sensors-initializer
 ```
 
+[![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-black.svg)](https://snapcraft.io/validity-sensors-initializer)
+
 ---
 
 ### Getting the firmware
