@@ -17,7 +17,8 @@ fi
 $(command -v python3) $SNAP/vfs-tools/validity-sensors-initializer.py "$@"
 ret=$?
 
-if [ "$ret" -eq 0 ]; then
+if [ "$ret" -eq 55 ]; then
+    ret=0
     echo "May the leds be with you (in 5 seconds)...!"
     (sleep 5 && \
      $(command -v python3) $SNAP/vfs-tools/led-dance.py &> /dev/null) &

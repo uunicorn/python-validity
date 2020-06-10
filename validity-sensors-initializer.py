@@ -254,3 +254,5 @@ if __name__ == "__main__":
         vfs_initializer.try_factory_reset()
         vfs_initializer.sleep()
         vfs_initializer.pair(fwpath)
+
+    sys.exit(55)
