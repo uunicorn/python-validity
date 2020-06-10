@@ -184,7 +184,7 @@ class VFSInitializer():
         else:
             calib_data_file = 'calib-data.bin'
 
-        print('Calibrating, re-using {}, if any...', calib_data_file)
+        print('Calibrating, re-using {}, if any...'.format(calib_data_file))
         if os.path.exists(calib_data_file):
             calibrate(calib_data_path=calib_data_file)
         else:
@@ -207,6 +207,7 @@ class VFSInitializer():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument('--driver-uri')
     parser.add_argument('--firmware-path', type=argparse.FileType('r'))
     parser.add_argument('--calibration-data', type=argparse.FileType('r'))
     parser.add_argument('--host-product')
@@ -244,7 +245,8 @@ if __name__ == "__main__":
         if args.firmware_path:
             fwpath = args.firmware_path.name
         else:
-            fwpath = vfs_initializer.download_and_extract_fw(fwdir)
+            fwpath = vfs_initializer.download_and_extract_fw(fwdir,
+                fwuri=args.driver_uri)
 
         input('The device will be now reset to factory and associated to the ' \
                 'current laptop.\nPress Enter to continue (or Ctrl+C to cancel)...')
