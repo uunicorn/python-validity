@@ -41,6 +41,23 @@ Once the chip is paired with the computer via this tool, it's possible to use
 it in libfprint using the driver at
 - https://github.com/3v1n0/libfprint/
 
+#### Installing it as [snap](https://snapcraft.io/)
+
+This tool can be easily installed [almost every linux distribution](https://snapcraft.io/docs/installing-snapd)
+with all its dependencies as snap.
+
+To do so:
+
+```bash
+sudo snap install validity-sensors-initializer
+
+# Give it access to the usb devices
+sudo snap connect validity-sensors-initializer:raw-usb
+
+# Initialize the device
+sudo validity-sensors-initializer
+```
+
 ---
 
 ### Getting the firmware

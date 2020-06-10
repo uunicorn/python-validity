@@ -1,0 +1,71 @@
+name: validity-sensors-initializer
+base: core20
+version: '0.5'
+summary: A Linux tool to flash and pair Validity fingerprint sensors 009x
+description: |
+  A simple tool that helps initializing Validity fingerprint readers under
+  linux, loading their binary firmware and initializing them.
+
+  This tool currently only supports these sensors:
+    - 138a:0090 Validity Sensors, Inc. VFS7500 Touch Fingerprint Sensor
+    - 138a:0097 Validity Sensors, Inc.
+  Which are present in various ThinkPad and HP laptops.
+
+  These devices communicate with the laptop via an encrypted protocol and they
+  need to be paired with the host computer in order to work and compute the
+  TLS keys.
+  Such initialization is normally done by the Windows driver, however thanks to
+  the amazing efforts of Viktor Dragomiretskyy (uunicorn), and previously of
+  Nikita Mikhailov, we have reverse-engineerd the pairing process, and so it's
+  possible to do it under Linux with only native tools as well.
+
+  The procedure is quite simple:
+    - Device is factory-reset and its flash repartitioned
+    - A TLS key is negotiated, generated via host hw ID and serial
+    - Windows driver is downloaded from Lenovo to extract the device firmware
+    - The device firmware is uploaded to the device
+    - The device is calibrated
+
+  Once the chip is paired with the computer via this tool, it's possible to use
+  it in libfprint using the driver at
+   - https://github.com/3v1n0/libfprint/
+
+grade: stable
+confinement: strict
+
+parts:
+  python-validity:
+    plugin: python
+    source: .
+    python-packages:
+      - wheel
+      - fastecdsa==1.7.4
+    build-packages:
+      - gcc
+      - git
+      - libgmp-dev
+      - python3-dev
+    stage-packages:
+      - innoextract
+      - python3-crypto
+      - python3-usb
+      - python3.8-minimal
+      - usbutils
+    override-build: |
+      set -x
+      snapcraftctl build
+      git clone . $SNAPCRAFT_PART_INSTALL/vfs-tools
+      rm -rf $SNAPCRAFT_PART_INSTALL/vfs-tools/.git*
+      rm -rf $SNAPCRAFT_PART_INSTALL/vfs-tools/snap
+
+  snap-launcher:
+    plugin: dump
+    source: snap/local
+    organize:
+      snap-launcher.sh: bin/snap-launcher.sh
+
+apps:
+  validity-sensors-initializer:
+    command: bin/snap-launcher.sh
+    plugs:
+      - raw-usb
