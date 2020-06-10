@@ -69,3 +69,10 @@ apps:
     command: bin/snap-launcher.sh
     plugs:
       - raw-usb
+
+  led-test:
+    command: bin/snap-launcher.sh
+    environment:
+      VFS_TOOL: led_dance
+    plugs:
+      - raw-usb
