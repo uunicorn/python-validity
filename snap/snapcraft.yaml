@@ -39,17 +39,15 @@ parts:
     source: .
     python-packages:
       - wheel
-      - fastecdsa==1.7.4
+    requirements:
+      - requirements.txt
     build-packages:
       - gcc
       - git
       - libgmp-dev
-      - python3-dev
     stage-packages:
       - innoextract
-      - python3-crypto
-      - python3-usb
-      - python3.8-minimal
+      - libusb-1.0-0
       - usbutils
     override-build: |
       set -x

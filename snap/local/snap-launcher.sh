@@ -1,11 +1,5 @@
 #!/bin/bash
 
-export PYTHONPATH=$SNAP/usr/lib/python3/dist-packages:$PYTHONPATH
-
-for p in $(ls -1d $SNAP/lib/python3*/site-packages); do
-    PYTHONPATH=$PYTHONPATH:$p
-done
-
 if ! $(command -v lsusb) &> /dev/null; then
     echo "Unable to access to USB devices"
     echo " $SNAP_NAME is installed as a snap."
