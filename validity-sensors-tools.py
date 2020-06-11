@@ -108,6 +108,11 @@ class VFSTools():
 
     def open_device(self, init=False):
         print('Opening device',hex(self.dev_type.value))
+        try:
+            vfs_usb.dev.reset()
+        except:
+            pass
+
         vfs_usb.open(product=self.dev_type.value)
 
         if init:
@@ -117,9 +122,9 @@ class VFSTools():
             vfs_tls.parseTlsFlash(read_flash(1, 0, 0x1000))
             vfs_tls.open()
 
-    def restart(self):
+    def restart(self, init=True):
         vfs_tls.reset()
-        self.open_device(init=True)
+        self.open_device(init=init)
 
     def download_and_extract_fw(self, fwdir, fwuri=None):
         fwuri = fwuri if fwuri else DEFAULT_URIS[self.dev_type]['driver']
@@ -221,7 +226,10 @@ class VFSTools():
             print('Factory reset failed with {}, this should not happen, but ' \
                 'we can ignore it, if pairing works...'.format(e))
 
+        vfs_tls.reset()
+        vfs_usb.dev.reset()
         self.sleep()
+
         self.pair(fwpath, calib_data)
 
     def led_dance(self):
@@ -255,6 +263,7 @@ if __name__ == "__main__":
             'initializer',
             'factory-reset',
             'flash-firmware',
+            'pair',
             'calibrate',
             'erase-db',
             'led-dance',
@@ -289,7 +298,7 @@ if __name__ == "__main__":
 
     vfs_tools = VFSTools(args, usb_dev, dev_type)
 
-    if args.tool == 'initializer':
+    if args.tool == 'initializer' or args.tool == 'pair':
         with tempfile.TemporaryDirectory() as fwdir:
             if args.firmware_path:
                 fwpath = args.firmware_path.name
@@ -301,7 +310,10 @@ if __name__ == "__main__":
                 'the current laptop.\nPress Enter to continue (or Ctrl+C to ' \
                 'cancel)...')
 
-            vfs_tools.initialize(fwpath, args.calibration_data)
+            if args.tool == 'pair':
+                vfs_tools.pair(fwpath, args.calibration_data)
+            else:
+                vfs_tools.initialize(fwpath, args.calibration_data)
 
     elif args.tool == 'factory-reset':
         input('The device will be now reset to factory\n' \
@@ -335,5 +347,3 @@ if __name__ == "__main__":
     elif args.tool == 'led-dance':
         vfs_tools.open_device(init=True)
         vfs_tools.led_dance()
-
-    sys.exit(55)
