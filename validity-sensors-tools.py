@@ -26,6 +26,7 @@ import sys
 import tempfile
 import urllib.request
 
+from binascii import unhexlify
 from enum import Enum, auto
 from time import sleep
 from usb import core as usb_core
@@ -34,7 +35,7 @@ from proto9x.calibrate import calibrate
 from proto9x.flash import read_flash
 from proto9x.init_db import init_db
 from proto9x.init_flash import init_flash
-from proto9x.sensor import factory_reset
+from proto9x.sensor import factory_reset, glow_start_scan, glow_end_enroll
 from proto9x.tls import tls as vfs_tls
 from proto9x.upload_fwext import upload_fwext
 from proto9x.usb import usb as vfs_usb
@@ -223,6 +224,23 @@ class VFSTools():
         self.sleep()
         self.pair(fwpath, calib_data)
 
+    def led_dance(self):
+        print('Let\'s glow the led!')
+
+        for i in range(10):
+            glow_start_scan()
+            sleep(0.05)
+            glow_end_enroll()
+            sleep(0.05)
+
+        led_script = unhexlify(
+            '39ff100000ff03000001ff002000000000ffff0000ffff0000ff03000001ff00' \
+            '200000000000000000ffff0000ff03000001ff002000000000ffff0000000000' \
+            '0000000000000000000000000000000000000000000000000000000000000000' \
+            '0000000000000000000000000000000000000000000000000000000000')
+
+        assert_status(vfs_tls.app(led_script))
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -239,6 +257,7 @@ if __name__ == "__main__":
             'flash-firmware',
             'calibrate',
             'erase-db',
+            'led-dance',
         ),
         default='initializer',
         help='Tool to launch (default: %(default)s)')
@@ -312,5 +331,9 @@ if __name__ == "__main__":
     elif args.tool == 'erase-db':
         vfs_tools.open_device(init=True)
         vfs_tools.init_db()
+
+    elif args.tool == 'led-dance':
+        vfs_tools.open_device(init=True)
+        vfs_tools.led_dance()
 
     sys.exit(55)
