@@ -1,5 +1,5 @@
 
-from .tls import tls, psk_encryption_key, psk_validation_key, hs_key, crt_hardcoded
+from .tls import tls, hs_key, crt_hardcoded
 from hashlib import sha256
 import hmac
 from struct import pack, unpack
@@ -40,9 +40,9 @@ def encrypt_key(client_private, client_public):
     m = m + bytes([l])*l
 
     iv = get_random_bytes(AES.block_size)
-    aes = AES.new(psk_encryption_key, AES.MODE_CBC, iv)
+    aes = AES.new(tls.psk_encryption_key, AES.MODE_CBC, iv)
     c = iv + aes.encrypt(m)
-    sig = hmac.new(psk_validation_key, c, sha256).digest()
+    sig = hmac.new(tls.psk_validation_key, c, sha256).digest()
     return b'\x02' + c + sig
     
 def make_cert(client_public):

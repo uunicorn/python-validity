@@ -16,12 +16,6 @@ from .util import assert_status
 import pickle
 
 
-# Info about the host computer
-product_name, serial_number='VirtualBox', '0'
-
-hw_key= bytes(product_name, 'ascii') + b'\0' + \
-        bytes(serial_number, 'ascii') + b'\0'
-
 password_hardcoded=unhexlify('717cd72d0962bc4a2846138dbb2c24192512a76407065f383846139d4bec2033')
 gwk_sign_hardcoded=unhexlify('3a4c76b76a97981d1274247e166610e77f4d9c9d07d3c728e532916bdd28b454')
 
@@ -50,10 +44,6 @@ def prf(secret, seed, length):
         n -= 1
 
     return res[:length]
-
-# pre-TLS keys
-psk_encryption_key=prf(password_hardcoded, b'GWK' + hw_key, 0x20)
-psk_validation_key=prf(psk_encryption_key, b'GWK_SIGN' + gwk_sign_hardcoded, 0x20)
 
 def hs_key():
     key=password_hardcoded[:0x10]
@@ -92,11 +82,22 @@ class Tls():
     def __init__(self, usb):
         self.usb = usb
         self.reset()
+        self.set_hwkey(product_name='VirtualBox', serial_number='0')
 
     def reset(self):
         self.trace_enabled = False
         self.secure_rx = False
         self.secure_tx = False
+
+    # Info about the host computer
+    def set_hwkey(self, product_name, serial_number):
+        hw_key = bytes(product_name, 'ascii') + b'\0' + \
+                 bytes(serial_number, 'ascii') + b'\0'
+
+        # pre-TLS keys
+        self.psk_encryption_key = prf(password_hardcoded, b'GWK' + hw_key, 0x20)
+        self.psk_validation_key = prf(self.psk_encryption_key,
+            b'GWK_SIGN' + gwk_sign_hardcoded, 0x20)
 
     def cmd(self, cmd):
         if self.secure_rx and self.secure_tx:
@@ -133,6 +134,7 @@ class Tls():
             print(s)
 
     def app(self, b):
+        b = b() if callable(b) else b
         return self.parse_tls_response(self.usb.cmd(self.make_app_data(b)))
 
     def update_neg(self, b):
@@ -491,12 +493,12 @@ class Tls():
             raise Exception('Unknown private key prefix %02x' % prefix)
 
         c, hs = body[:-0x20], body[-0x20:]
-        sig=hmac.new(psk_validation_key, c, sha256).digest()
+        sig=hmac.new(self.psk_validation_key, c, sha256).digest()
         if hs != sig:
             raise Exception('Signature verification failed. This device was probably paired with another computer.')
         
         iv, c = c[:AES.block_size], c[AES.block_size:]
-        aes=AES.new(psk_encryption_key, AES.MODE_CBC, iv)
+        aes=AES.new(self.psk_encryption_key, AES.MODE_CBC, iv)
         m=aes.decrypt(c)
         m=m[:-m[-1]] # unpad (standard this time)
 

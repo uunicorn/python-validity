@@ -1,13 +1,13 @@
 
 from time import sleep
 
-from proto97.usb import usb
-from proto97.tls import tls
-from proto97.flash import read_flash
-from proto97.init_flash import init_flash
-from proto97.upload_fwext import upload_fwext
-from proto97.calibrate import calibrate
-from proto97.init_db import init_db
+from proto9x.usb import usb
+from proto9x.tls import tls
+from proto9x.flash import read_flash
+from proto9x.init_flash import init_flash
+from proto9x.upload_fwext import upload_fwext
+from proto9x.calibrate import calibrate
+from proto9x.init_db import init_db
 
 #usb.trace_enabled=True
 #tls.trace_enabled=True

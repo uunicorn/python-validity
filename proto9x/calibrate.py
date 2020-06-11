@@ -37,7 +37,7 @@ def persist_calib_data(calib_data):
 
     write_flash_all(6, 0, calib_data)
 
-def calibrate():
+def calibrate(calib_data_path='calib-data.bin'):
     # no idea what this is:
     write_hw_reg32(0x8000205c, 7)
     if read_hw_reg32(0x80002080) != 2:
@@ -53,8 +53,8 @@ def calibrate():
 
     print('FWExt version %d.%d (%s), %d modules' % (fwi.major, fwi.minor, ctime(fwi.buildtime), len(fwi.modules)))
 
-    if isfile('calib-data.bin'):
-        with open('calib-data.bin', 'rb') as f:
+    if isfile(calib_data_path):
+        with open(calib_data_path, 'rb') as f:
             calib_data=f.read()
             print('Calibration data loaded from the file.')
     else:
@@ -75,12 +75,11 @@ def calibrate():
 
         rsp=tls.cmd(calibrate_prg)
         assert_status(rsp)
-        print(rsp.hex())
         # ^ TODO check what the rest of the rsp means
 
         calib_data=usb.read_82()
         print('len=%d' % len(calib_data))
-        with open('calib-data.bin', 'wb') as f:
+        with open(calib_data_path, 'wb') as f:
             f.write(calib_data)
 
     lines=[calib_data[i:i+0x90+8] for i in range(0, len(calib_data), 0x90+8)] # TODO work out where "bytes per line" constant is comming from

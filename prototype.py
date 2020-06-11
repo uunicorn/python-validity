@@ -1,10 +1,10 @@
 
-from proto97.tls import tls
-from proto97.usb import usb
-from proto97.db import db
-from proto97.flash import read_flash
-from proto97.sensor import *
-from proto97.sid import *
+from proto9x.tls import tls
+from proto9x.usb import usb
+from proto9x.db import db
+from proto9x.flash import read_flash
+from proto9x.sensor import *
+from proto9x.sid import *
 
 def open97():
     usb.open()
