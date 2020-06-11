@@ -19,6 +19,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
+import io
 import os
 import subprocess
 import sys
@@ -37,6 +38,7 @@ from proto9x.sensor import factory_reset
 from proto9x.tls import tls as vfs_tls
 from proto9x.upload_fwext import upload_fwext
 from proto9x.usb import usb as vfs_usb
+from proto9x.util import assert_status
 
 class VFS(Enum):
     DEV_90 = 0x0090
@@ -59,7 +61,7 @@ DEFAULT_FW_NAMES = {
 }
 
 
-class VFSInitializer():
+class VFSTools():
     def __init__(self, args, usb_dev, dev_type):
         self.args = args
         self.usb_dev = usb_dev
@@ -89,12 +91,26 @@ class VFSInitializer():
         vfs_tls.set_hwkey(product_name=self.product_name,
             serial_number=self.product_serial)
 
+    def retry_command(self, command, max_retries=3):
+        for i in range(max_retries):
+            try:
+                command()
+                break
+            except Exception as e:
+                err = e
+                self.sleep()
+                print('Try {} failed with error: {}'.format(i+1, e))
+
+            if i == max_retries-1:
+                print('Device didn\'t reply in time...')
+                raise(err)
+
     def open_device(self, init=False):
         print('Opening device',hex(self.dev_type.value))
         vfs_usb.open(product=self.dev_type.value)
 
         if init:
-            vfs_usb.send_init()
+            self.retry_command(vfs_usb.send_init)
 
             # try to init TLS session from the flash
             vfs_tls.parseTlsFlash(read_flash(1, 0, 0x1000))
@@ -139,80 +155,93 @@ class VFSInitializer():
         print('Sleeping...')
         sleep(sec)
 
-    def try_factory_reset(self):
-        self.open_device()
-        try:
-            print('Factory reset...')
-            factory_reset()
-        except Exception as e:
-            print('Factory reset failed with {}, this should not happen, but ' \
-                    'we can ignore it, if pairing works...'.format(e))
+    def factory_reset(self):
+        print('Factory reset...')
+        self.retry_command(factory_reset)
 
-    def pair(self, fwpath):
-        print('Pairing the sensor with device {}'.format(self.product_name))
-
-        max_retries = 5
-        for i in range(0, max_retries):
-            try:
-                self.open_device()
-
-                print('Initializing flash...')
-                init_flash()
-                break
-            except Exception as e:
-                err = e
-                self.sleep()
-                print('Try {} failed with error: {}'.format(i+1, e))
-            finally:
-                max_retries -= 1
-
-            if max_retries == 0:
-                print('Device didn\'t show up after reset, retry...')
-                raise(err)
-
-        self.sleep()
-        self.restart()
-
+    def flash_firmware(self, fwpath):
         print('Uploading firmware...')
         upload_fwext(fw_path=fwpath)
 
-        self.sleep()
-        self.restart()
-
-        if self.args.calibration_data:
-            calib_data_file = self.args.calibration_data.name
+    def calibrate(self, calib_data=None):
+        if isinstance(calib_data, io.IOBase):
+            calib_data_file = calib_data.name
+        elif calib_data:
+            calib_data_file = calib_data
         else:
             calib_data_file = 'calib-data.bin'
 
-        print('Calibrating, re-using {}, if any...'.format(calib_data_file))
+        use_device = False
         if os.path.exists(calib_data_file):
-            calibrate(calib_data_path=calib_data_file)
+            print('Calibrating, using data from {}'.format(calib_data_file))
         else:
-            try:
-                calib_data_file = os.path.join(tempfile.mkdtemp(), 'calib-data.bin')
-                calibrate(calib_data_path=calib_data_file)
-                print('Calibration data saved at {}'.format(calib_data_file))
-            except Exception as e:
-                print('Calibration failed using device data ({}), ' \
-                      'You can try loading a local `calib-data.bin` blob, ' \
-                      'the device should work anyway, so skipping...'.format(e))
+            print('Calibrating using device data')
+            calib_data_file = os.path.join(tempfile.mkdtemp(), 'calib-data.bin')
+            use_device = True
 
+        calibrate(calib_data_path=calib_data_file)
+
+        if use_device:
+            print('Calibration data saved at {}'.format(calib_data_file))
+
+    def init_db(self):
         print('Init database...')
         init_db()
 
-        vfs_tls.reset()
+    def pair(self, fwpath, calib_data=None):
+        print('Pairing the sensor with device {}'.format(self.product_name))
+
+        def init_flash_command():
+            self.open_device()
+            print('Initializing flash...')
+            init_flash()
+        self.retry_command(init_flash_command, max_retries=5)
+
+        self.sleep()
+        self.restart()
+
+        self.flash_firmware(fwpath)
+
+        self.sleep()
+        self.restart()
+
+        self.calibrate(calib_data)
+
+        self.init_db()
 
         print('That\'s it, pairing with {} finished'.format(self.dev_str))
+
+    def initialize(self, fwpath, calib_data=None):
+        self.open_device()
+
+        try:
+            self.factory_reset()
+        except Exception as e:
+            print('Factory reset failed with {}, this should not happen, but ' \
+                'we can ignore it, if pairing works...'.format(e))
+
+        self.sleep()
+        self.pair(fwpath, calib_data)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--driver-uri')
-    parser.add_argument('--firmware-path', type=argparse.FileType('r'))
-    parser.add_argument('--calibration-data', type=argparse.FileType('r'))
+    parser.add_argument('-d', '--driver-uri')
+    parser.add_argument('-f', '--firmware-path', type=argparse.FileType('r'))
+    parser.add_argument('-c', '--calibration-data', type=argparse.FileType('r'))
     parser.add_argument('--host-product')
     parser.add_argument('--host-serial')
     parser.add_argument('--simulate-virtualbox', action='store_true')
+    parser.add_argument('-t', '--tool',
+        choices=(
+            'initializer',
+            'factory-reset',
+            'flash-firmware',
+            'calibrate',
+            'erase-db',
+        ),
+        default='initializer',
+        help='Tool to launch (default: %(default)s)')
 
     args = parser.parse_args()
 
@@ -239,20 +268,49 @@ if __name__ == "__main__":
         print('Impossible to run innoextract: {}'.format(e))
         sys.exit(1)
 
-    vfs_initializer = VFSInitializer(args, usb_dev, dev_type)
+    vfs_tools = VFSTools(args, usb_dev, dev_type)
 
-    with tempfile.TemporaryDirectory() as fwdir:
-        if args.firmware_path:
-            fwpath = args.firmware_path.name
-        else:
-            fwpath = vfs_initializer.download_and_extract_fw(fwdir,
-                fwuri=args.driver_uri)
+    if args.tool == 'initializer':
+        with tempfile.TemporaryDirectory() as fwdir:
+            if args.firmware_path:
+                fwpath = args.firmware_path.name
+            else:
+                fwpath = vfs_tools.download_and_extract_fw(fwdir,
+                    fwuri=args.driver_uri)
 
-        input('The device will be now reset to factory and associated to the ' \
-                'current laptop.\nPress Enter to continue (or Ctrl+C to cancel)...')
+            input('The device will be now reset to factory and associated to ' \
+                'the current laptop.\nPress Enter to continue (or Ctrl+C to ' \
+                'cancel)...')
 
-        vfs_initializer.try_factory_reset()
-        vfs_initializer.sleep()
-        vfs_initializer.pair(fwpath)
+            vfs_tools.initialize(fwpath, args.calibration_data)
+
+    elif args.tool == 'factory-reset':
+        input('The device will be now reset to factory\n' \
+            'Press Enter to continue (or Ctrl+C to cancel)...')
+        vfs_tools.open_device()
+        vfs_tools.factory_reset()
+
+    elif args.tool == 'flash-firmware':
+        with tempfile.TemporaryDirectory() as fwdir:
+            if args.firmware_path:
+                fwpath = args.firmware_path.name
+            else:
+                fwpath = vfs_tools.download_and_extract_fw(fwdir,
+                    fwuri=args.driver_uri)
+
+            input('The device will be now flashed with {} firmware.\n' \
+                'Press Enter to continue (or Ctrl+C to cancel)...'.format(
+                    fwpath))
+
+            vfs_tools.open_device(init=True)
+            vfs_tools.flash_firmware(fwpath)
+
+    elif args.tool == 'calibrate':
+        vfs_tools.open_device(init=True)
+        vfs_tools.calibrate(args.calibration_data)
+
+    elif args.tool == 'erase-db':
+        vfs_tools.open_device(init=True)
+        vfs_tools.init_db()
 
     sys.exit(55)

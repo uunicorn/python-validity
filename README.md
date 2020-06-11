@@ -13,9 +13,9 @@ $ pip3 install -r requirements.txt
 
 ### Automatic factory reset, pairing and firmware flashing
 
-This repo includes `validity-sensors-initializer.py`, a simple tool that
-helps initializing Validity fingerprint readers under linux, loading their
-binary firmware and initializing them.
+This repo includes `validity-sensors-tools.py`, a simple collection of
+tools that helps initializing Validity fingerprint readers under linux,
+loading their binary firmware and initializing them.
 
 This tool currently only supports these sensors:
 - 138a:0090 Validity Sensors, Inc. VFS7500 Touch Fingerprint Sensor
