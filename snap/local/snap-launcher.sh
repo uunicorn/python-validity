@@ -8,22 +8,21 @@ if ! $(command -v lsusb) &> /dev/null; then
     exit 1
 fi
 
-led_dance() {
-    $(command -v python3) $SNAP/vfs-tools/led-dance.py "$@"
+run_tool() {
+    [ -n "$VFS_TOOL" ] && \
+        local args=(--tool "$VFS_TOOL")
+
+    $(command -v python3) $SNAP/vfs-tools/validity-sensors-tools.py \
+        "${args[@]}" "$@"
 }
 
-if [ "$VFS_TOOL" == "led_dance" ]; then
-    led_dance "$@"
-    exit $?
-else
-    $(command -v python3) $SNAP/vfs-tools/validity-sensors-initializer.py "$@"
-    ret=$?
+run_tool "$@"
+ret=$?
 
-    if [ "$ret" -eq 55 ]; then
-        ret=0
-        echo "May the leds be with you (in 5 seconds)...!"
-        (sleep 5 && led_dance &> /dev/null) &
-    fi
-
-    exit $ret
+if [ "$ret" -eq 0 ] && [[ "$VFS_TOOL" == 'initializer' ]]; then
+    unset VFS_TOOL
+    echo "May the leds be with you...!"
+    (run_tool --tool=led-dance &> /dev/null) &
 fi
+
+exit $ret

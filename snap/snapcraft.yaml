@@ -63,14 +63,51 @@ parts:
       snap-launcher.sh: bin/snap-launcher.sh
 
 apps:
+  validity-sensors-tools:
+    command: bin/snap-launcher.sh
+    environment:
+      VFS_TOOL: no-tool-selected
+    plugs:
+      - raw-usb
+
   initializer:
     command: bin/snap-launcher.sh
+    environment:
+      VFS_TOOL: initializer
     plugs:
       - raw-usb
 
   led-test:
     command: bin/snap-launcher.sh
     environment:
-      VFS_TOOL: led_dance
+      VFS_TOOL: led-dance
+    plugs:
+      - raw-usb
+
+  erase-db:
+    command: bin/snap-launcher.sh
+    environment:
+      VFS_TOOL: erase-db
+    plugs:
+      - raw-usb
+
+  factory-reset:
+    command: bin/snap-launcher.sh
+    environment:
+      VFS_TOOL: factory-reset
+    plugs:
+      - raw-usb
+
+  pair:
+    command: bin/snap-launcher.sh
+    environment:
+      VFS_TOOL: pair
+    plugs:
+      - raw-usb
+
+  calibrate:
+    command: bin/snap-launcher.sh
+    environment:
+      VFS_TOOL: calibrate
     plugs:
       - raw-usb

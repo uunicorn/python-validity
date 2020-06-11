@@ -59,6 +59,9 @@ sudo validity-sensors-tools.initializer
 
 # Test the device
 sudo validity-sensors-tools.led_test
+
+# See other avilable tools
+validity-sensors-tools --help
 ```
 
 [![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-black.svg)](https://snapcraft.io/validity-sensors-tools)
