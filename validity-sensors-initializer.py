@@ -216,11 +216,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.simulate_virtualbox and (args.host_product or args.host_serial):
-        parser.error("--simulate-virtualbox is incompatible with host params.")
-
     if os.geteuid() != 0:
         raise Exception('This script needs to be executed as root')
+
+    if args.simulate_virtualbox and (args.host_product or args.host_serial):
+        parser.error("--simulate-virtualbox is incompatible with host params.")
 
     usb_dev = None
     for d in VFS:
