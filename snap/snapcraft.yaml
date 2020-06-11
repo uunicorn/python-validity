@@ -1,6 +1,6 @@
 name: validity-sensors-tools
 base: core20
-version: '0.5'
+version: git
 summary: A Linux tool to flash and pair Validity fingerprint sensors 009x
 description: |
   A simple tool that helps initializing Validity fingerprint readers under
