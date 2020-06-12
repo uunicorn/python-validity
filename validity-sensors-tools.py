@@ -32,6 +32,7 @@ from time import sleep
 from usb import core as usb_core
 
 from proto9x.calibrate import calibrate
+from proto9x.db import db
 from proto9x.flash import read_flash
 from proto9x.init_db import init_db
 from proto9x.init_flash import init_flash
@@ -194,6 +195,10 @@ class VFSTools():
         print('Init database...')
         init_db()
 
+    def dump_db(self):
+        print('Dumping database...')
+        db.dump_all()
+
     def pair(self, fwpath, calib_data=None):
         print('Pairing the sensor with device {}'.format(self.product_name))
 
@@ -265,6 +270,7 @@ if __name__ == "__main__":
             'flash-firmware',
             'pair',
             'calibrate',
+            'dump-db',
             'erase-db',
             'led-dance',
         ),
@@ -343,6 +349,10 @@ if __name__ == "__main__":
     elif args.tool == 'erase-db':
         vfs_tools.open_device(init=True)
         vfs_tools.init_db()
+
+    elif args.tool == 'dump-db':
+        vfs_tools.open_device(init=True)
+        vfs_tools.dump_db()
 
     elif args.tool == 'led-dance':
         vfs_tools.open_device(init=True)
