@@ -42,6 +42,9 @@ from proto9x.upload_fwext import upload_fwext
 from proto9x.usb import usb as vfs_usb
 from proto9x.util import assert_status
 
+
+VALIDITY_VENDOR_ID = 0x138a
+
 class VFS(Enum):
     DEV_90 = 0x0090
     DEV_97 = 0x0097
@@ -294,7 +297,7 @@ if __name__ == "__main__":
 
     usb_dev = None
     for d in VFS:
-        dev = usb_core.find(idVendor=0x138a, idProduct=d.value)
+        dev = usb_core.find(idVendor=VALIDITY_VENDOR_ID, idProduct=d.value)
         if dev:
             dev_type = d
             usb_dev = dev
