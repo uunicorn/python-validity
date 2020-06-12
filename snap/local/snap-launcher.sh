@@ -6,7 +6,7 @@ for p in $(ls -1d $SNAP/lib/python3*/site-packages); do
     PYTHONPATH=$PYTHONPATH:$p
 done
 
-if ! $(command -v lsusb) &> /dev/null; then
+if ! $(command -v lsusb) -d 138a: &> /dev/null; then
     echo "Unable to access to USB devices"
     echo " $SNAP_NAME is installed as a snap."
     echo " To allow it to function correctly you may need to run:"
