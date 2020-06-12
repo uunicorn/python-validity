@@ -357,3 +357,6 @@ if __name__ == "__main__":
     elif args.tool == 'led-dance':
         vfs_tools.open_device(init=True)
         vfs_tools.led_dance()
+
+    else:
+        parser.error('No valid tool selected')
