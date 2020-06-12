@@ -11,6 +11,7 @@ if ! $(command -v lsusb) &> /dev/null; then
     echo " $SNAP_NAME is installed as a snap."
     echo " To allow it to function correctly you may need to run:"
     echo "   sudo snap connect $SNAP_NAME:raw-usb"
+    echo "   sudo snap connect $SNAP_NAME:hardware-observe"
     exit 1
 fi
 

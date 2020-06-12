@@ -53,6 +53,7 @@ sudo snap install validity-sensors-tools
 
 # Give it access to the usb devices
 sudo snap connect validity-sensors-tools:raw-usb
+sudo snap connect validity-sensors-tools:hardware-observe
 
 # Initialize the device
 sudo validity-sensors-tools.initializer

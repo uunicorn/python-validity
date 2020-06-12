@@ -69,6 +69,7 @@ apps:
       VFS_TOOL: no-tool-selected
     plugs:
       - raw-usb
+      - hardware-observe
 
   initializer:
     command: bin/snap-launcher.sh
@@ -76,6 +77,7 @@ apps:
       VFS_TOOL: initializer
     plugs:
       - raw-usb
+      - hardware-observe
 
   led-test:
     command: bin/snap-launcher.sh
@@ -83,6 +85,7 @@ apps:
       VFS_TOOL: led-dance
     plugs:
       - raw-usb
+      - hardware-observe
 
   erase-db:
     command: bin/snap-launcher.sh
@@ -90,6 +93,7 @@ apps:
       VFS_TOOL: erase-db
     plugs:
       - raw-usb
+      - hardware-observe
 
   factory-reset:
     command: bin/snap-launcher.sh
@@ -97,6 +101,7 @@ apps:
       VFS_TOOL: factory-reset
     plugs:
       - raw-usb
+      - hardware-observe
 
   pair:
     command: bin/snap-launcher.sh
@@ -104,6 +109,7 @@ apps:
       VFS_TOOL: pair
     plugs:
       - raw-usb
+      - hardware-observe
 
   calibrate:
     command: bin/snap-launcher.sh
@@ -111,3 +117,4 @@ apps:
       VFS_TOOL: calibrate
     plugs:
       - raw-usb
+      - hardware-observe
