@@ -132,6 +132,13 @@ class VFSTools():
         fwarchive = os.path.join(fwdir, 'fwinstaller.exe')
         fwname = DEFAULT_FW_NAMES[self.dev_type]
 
+        try:
+            subprocess.check_call(['innoextract', '--version'],
+                stdout=subprocess.DEVNULL)
+        except Exception as e:
+            print('Impossible to run innoextract: {}'.format(e))
+            raise(e)
+
         print('Downloading {} to extract {}'.format(fwuri, fwname))
 
         req = urllib.request.Request(fwuri)
@@ -294,13 +301,6 @@ if __name__ == "__main__":
 
     if not usb_dev:
         raise Exception('No supported validity device found')
-
-    try:
-        subprocess.check_call(['innoextract', '--version'],
-            stdout=subprocess.DEVNULL)
-    except Exception as e:
-        print('Impossible to run innoextract: {}'.format(e))
-        sys.exit(1)
 
     vfs_tools = VFSTools(args, usb_dev, dev_type)
 
