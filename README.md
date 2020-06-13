@@ -59,7 +59,7 @@ sudo snap connect validity-sensors-tools:hardware-observe
 sudo validity-sensors-tools.initializer
 
 # Test the device
-sudo validity-sensors-tools.led_test
+sudo validity-sensors-tools.led-test
 
 # See other avilable tools
 validity-sensors-tools --help
