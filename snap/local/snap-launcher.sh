@@ -29,7 +29,7 @@ ret=$?
 if [ "$ret" -eq 0 ] && [[ "$VFS_TOOL" == 'initializer' ]]; then
     unset VFS_TOOL
     echo "May the leds be with you...!"
-    (run_tool --tool=led-dance &> /dev/null) &
+    (run_tool "$@" --tool=led-dance &> /dev/null) &
 fi
 
 exit $ret
