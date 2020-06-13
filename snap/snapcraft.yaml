@@ -65,8 +65,6 @@ parts:
 apps:
   validity-sensors-tools:
     command: bin/snap-launcher.sh
-    environment:
-      VFS_TOOL: no-tool-selected
     plugs:
       - raw-usb
       - hardware-observe
