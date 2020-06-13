@@ -283,11 +283,15 @@ if __name__ == "__main__":
             'dump-db',
             'erase-db',
             'led-dance',
+            'no-tool-selected',
         ),
-        default='initializer',
         help='Tool to launch (default: %(default)s)')
 
     args = parser.parse_args()
+
+    if not args.tool:
+        parser.print_help()
+        sys.exit(1)
 
     if os.geteuid() != 0:
         raise Exception('This script needs to be executed as root')
