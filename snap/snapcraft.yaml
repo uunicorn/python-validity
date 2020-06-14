@@ -68,6 +68,7 @@ apps:
     plugs:
       - raw-usb
       - hardware-observe
+      - network
 
   initializer:
     command: bin/snap-launcher.sh
@@ -76,6 +77,7 @@ apps:
     plugs:
       - raw-usb
       - hardware-observe
+      - network
 
   led-test:
     command: bin/snap-launcher.sh
