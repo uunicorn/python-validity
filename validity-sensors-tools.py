@@ -36,7 +36,8 @@ from proto9x.db import db
 from proto9x.flash import read_flash
 from proto9x.init_db import init_db
 from proto9x.init_flash import init_flash
-from proto9x.sensor import factory_reset, glow_start_scan, glow_end_enroll
+from proto9x.sensor import factory_reset, glow_start_scan, glow_end_enroll, enroll
+from proto9x.sid import sid_from_string
 from proto9x.tls import tls as vfs_tls
 from proto9x.upload_fwext import upload_fwext
 from proto9x.usb import usb as vfs_usb
@@ -264,6 +265,14 @@ class VFSTools():
 
         assert_status(vfs_tls.app(led_script))
 
+    def enroll(self):
+        if self.dev_type.value != 0x97:
+            raise Exception('Enroll not supported yet for device {}'.format(
+                hex(self.dev_type.value)))
+
+        sid = sid_from_string('S-1-5-21-394619333-3876782012-1672975908-3333')
+        enroll(sid, 0xf5)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -283,7 +292,7 @@ if __name__ == "__main__":
             'dump-db',
             'erase-db',
             'led-dance',
-            'no-tool-selected',
+            'enroll',
         ),
         help='Tool to launch (default: %(default)s)')
 
@@ -364,6 +373,10 @@ if __name__ == "__main__":
     elif args.tool == 'led-dance':
         vfs_tools.open_device(init=True)
         vfs_tools.led_dance()
+
+    elif args.tool == 'enroll':
+        vfs_tools.open_device(init=True)
+        vfs_tools.enroll()
 
     else:
         parser.error('No valid tool selected')
