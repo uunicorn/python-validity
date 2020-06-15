@@ -118,3 +118,11 @@ apps:
     plugs:
       - raw-usb
       - hardware-observe
+
+  enroll:
+    command: bin/snap-launcher.sh
+    environment:
+      VFS_TOOL: enroll
+    plugs:
+      - raw-usb
+      - hardware-observe
