@@ -37,6 +37,10 @@ The procedure is quite simple:
 - The device firmware is uploaded to the device
 - The device is calibrated
 
+For 138a:0097 it's also possible to enroll fingers in the internal storage
+doing:
+`validity-sensors-tools.py --tool enroll --finger-id [0-9]`
+
 Once the chip is paired with the computer via this tool, it's possible to use
 it in libfprint using the driver at
 - https://github.com/3v1n0/libfprint/
