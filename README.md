@@ -71,6 +71,16 @@ validity-sensors-tools --help
 
 [![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-black.svg)](https://snapcraft.io/validity-sensors-tools)
 
+#### Installing from AUR on Arch Linux
+
+Install [validity-sensors-tools-git<sup>[AUR]</sup>](https://aur.archlinux.org/packages/validity-sensors-tools-git/).
+
+You can run it as `validity-sensors-tools`:
+
+```bash
+sudo validity-sensors-tools -t led-dance
+```
+
 ---
 
 ### Getting the firmware
