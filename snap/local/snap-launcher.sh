@@ -19,7 +19,7 @@ run_tool() {
     [ -n "$VFS_TOOL" ] && \
         local args=(--tool "$VFS_TOOL")
 
-    $(command -v python3) $SNAP/vfs-tools/validity-sensors-tools.py \
+    $(command -v python3) $SNAP/vfs-tools/validity-sensors-tools \
         "${args[@]}" "$@"
 }
 
