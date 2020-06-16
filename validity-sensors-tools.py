@@ -265,13 +265,13 @@ class VFSTools():
 
         assert_status(vfs_tls.app(led_script))
 
-    def enroll(self):
+    def enroll(self, finger=0):
         if self.dev_type.value != 0x97:
             raise Exception('Enroll not supported yet for device {}'.format(
                 hex(self.dev_type.value)))
 
         sid = sid_from_string('S-1-5-21-394619333-3876782012-1672975908-3333')
-        enroll(sid, 0xf5)
+        enroll(sid, finger + 0xf5)
 
 
 if __name__ == "__main__":
@@ -282,6 +282,7 @@ if __name__ == "__main__":
     parser.add_argument('--host-product')
     parser.add_argument('--host-serial')
     parser.add_argument('--simulate-virtualbox', action='store_true')
+    parser.add_argument('-s', '--finger-id', type=int, choices=range(0, 10))
     parser.add_argument('-t', '--tool',
         choices=(
             'initializer',
@@ -376,7 +377,7 @@ if __name__ == "__main__":
 
     elif args.tool == 'enroll':
         vfs_tools.open_device(init=True)
-        vfs_tools.enroll()
+        vfs_tools.enroll(finger=args.finger_id)
 
     else:
         parser.error('No valid tool selected')
