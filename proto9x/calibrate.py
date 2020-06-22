@@ -40,7 +40,7 @@ def persist_calib_data(calib_data):
 def calibrate(calib_data_path='calib-data.bin'):
     # no idea what this is:
     write_hw_reg32(0x8000205c, 7)
-    if read_hw_reg32(0x80002080) != 2:
+    if read_hw_reg32(0x80002080) != 3:
         raise Exception('Unexpected register value')
 
     dev=identify_sensor()
