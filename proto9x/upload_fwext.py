@@ -16,6 +16,9 @@ def default_fwext_name():
             return '6_07f_Lenovo.xpfwext'
         elif usb.usb_dev().idProduct == 0x0097:
             return '6_07f_lenovo_mis.xpfwext'
+    elif usb.usb_dev().idVendor == 0x06cb:
+        if usb.usb_dev().idProduct == 0x009a:
+            return '6_07f_lenovo_mis_qm.xpfwext'
 
 def upload_fwext(fw_path=None):
     # no idea what this is:
