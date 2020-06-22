@@ -120,7 +120,7 @@ def append_new_image(key=0, prev=b''):
         raise Exception('Response size does not match %d != %d', l, len(res))
 
     # FIXME check how it's done rather than using a hardcoded offsets
-    res, new = res[:0x6c], res[0x6c:]
+    res, new = res[:0x74], res[0x74:]
 
     return (new_key, res, new)
 
