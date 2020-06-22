@@ -165,9 +165,10 @@ def enroll(identity, subtype):
         
         key, rsp, template = append_new_image(key, template)
 
-        print('Progress: %d %% done' % rsp[0x3c])
+        print(hexlify(rsp))
+        print('Progress: %d %% done' % rsp[0x3a])
         
-        if rsp[0x3c] == 100:
+        if rsp[0x3a] == 100:
             break
 
     # FIXME check for duplicates
