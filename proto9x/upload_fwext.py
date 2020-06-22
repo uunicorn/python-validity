@@ -23,7 +23,7 @@ def default_fwext_name():
 def upload_fwext(fw_path=None):
     # no idea what this is:
     write_hw_reg32(0x8000205c, 7)
-    if read_hw_reg32(0x80002080) != 2:
+    if read_hw_reg32(0x80002080) != 3:
         raise Exception('Unexpected register value')
 
     dev=identify_sensor()
