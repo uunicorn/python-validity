@@ -2,13 +2,13 @@
 from .tls import tls
 from .usb import usb
 from .db import db, subtype_to_string
+from .flash import write_enable, flush_changes
 from time import sleep
 from struct import pack, unpack
 from binascii import hexlify, unhexlify
 from .util import assert_status, unhex
 from .hw_tables import dev_info_lookup
 from .blobs import identify_prg, enroll_prg, reset_blob
-
 
 def glow_start_scan():
     cmd=unhexlify('3920bf0200ffff0000019900200000000099990000000000000000000000000020000000000000000000000000ffff000000990020000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000')
@@ -96,13 +96,19 @@ def append_new_image(key=0, prev=b''):
 
     usb.wait_int()
 
+
+    write_enable()
     rsp=tls.app(b'\x6b' + prev)
     assert_status(rsp)
+    flush_changes()
     
     usb.wait_int()
 
+    write_enable()
     rsp=tls.app(b'\x6b' + prev)
     assert_status(rsp)
+    flush_changes()
+    
     res=rsp[2:]
 
     rsp=tls.app(unhexlify('6900000000'))

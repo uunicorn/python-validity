@@ -88,6 +88,9 @@ def get_fw_info(partition):
 
     return FirmwareInfo(major, minor, buildtime, modules)
 
+def write_enable():
+    assert_status(tls.cmd(db_write_enable))
+
 def flush_changes():
     assert_status(tls.cmd(b'\x1a'))
 
