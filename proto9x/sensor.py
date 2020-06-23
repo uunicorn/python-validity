@@ -243,20 +243,33 @@ def identify():
     #for k in rsp:
     #    print('%04x: %s (%d)' % (k, hexlify(rsp[k]).decode(), len(rsp[k])))
     
+#on 0097
 #0001: 09000000 (4)
 #0003: f500 (2)
 #0004: 8dee792532d3432d41c872fd4d6d590fbc855ad449cf2753cd919eb9c94675c6 (32)
 #0005: 0000000000000000000000000000000000000000000000000000000000000000 (32)
-#0008: 0a00 (2)
+#0008: 0a00 (2) <-- finger record db id
 #0002: 010b0000 (4)
 #0006: 00000000000000000000000000000000000000000000000000000000000000000000000000000000 (40)
-    usrid, subtype, hsh, fingerid = rsp[1], rsp[3], rsp[4], rsp[8]
+
+#on 009a (no finger record db id)
+#0000 8a00
+# 0100 0400 05000000
+# 0300 0200 f500
+# 0400 2000 b147dd1eda8da322fb7a2a51d0eab6fe94bef46c05204fbefb1fd16360903791
+# 0500 2000 0000000000000000000000000000000000000000000000000000000000000000
+# 0200 0400 650a0000
+# 0600 2800 00000000000000000000000000000000000000000000000000000000000000000000000000000000
+
+    usrid, subtype, hsh = rsp[1], rsp[3], rsp[4]
     usrid, = unpack('<L', usrid)
     subtype, = unpack('<H', subtype)
-    fingerid, = unpack('<H', fingerid)
 
     usr = db.get_user(usrid)
-    finger_record = db.get_record_children(fingerid)
+    fingerids = [f['dbid'] for f in usr.fingers if f['subtype'] == subtype]
+    if len(fingerids) != 1:
+        raise Exception('Unexpected matching finger count')
+    finger_record = db.get_record_children(fingerids[0])
 
     # Device won't let you add more than one data blob
     if len(finger_record.children) > 1:
