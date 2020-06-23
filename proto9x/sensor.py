@@ -64,17 +64,17 @@ def capture(prg):
 
     try:
         wait_for_finger()
-        wait_till_finished()
+        #wait_till_finished()
+    
+        while True:
+            b=usb.wait_int()
+            if b[0] != 3:
+                raise Exception('Unexpected interrupt type %s' % hexlify(b).decode())
+
+            if b[2] & 4:
+                break
     finally:
         res=stop_prg()
-    
-    while True:
-        b=usb.wait_int()
-        if b[0] != 3:
-            raise Exception('Unexpected interrupt type %s' % hexlify(b).decode())
-
-        if b[1] == 0x43:
-            break
 
     assert_status(res)
     res = res[2:]
