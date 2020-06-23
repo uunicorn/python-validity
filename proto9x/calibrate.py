@@ -40,7 +40,7 @@ def persist_calib_data(calib_data):
 def calibrate(calib_data_path='calib-data.bin'):
     # no idea what this is:
     write_hw_reg32(0x8000205c, 7)
-    if read_hw_reg32(0x80002080) != 3:
+    if read_hw_reg32(0x80002080) not in [2, 3]:
         raise Exception('Unexpected register value')
 
     dev=identify_sensor()
@@ -82,7 +82,7 @@ def calibrate(calib_data_path='calib-data.bin'):
         with open(calib_data_path, 'wb') as f:
             f.write(calib_data)
 
-    lines=[calib_data[i:i+0x90+8] for i in range(0, len(calib_data), 0x90+8)] # TODO work out where "bytes per line" constant is comming from
+    lines=[calib_data[i:i+0x70+8] for i in range(0, len(calib_data), 0x70+8)] # TODO work out where "bytes per line" constant is comming from
     lines=[Line(i) for i in lines]
     frame4=[i.serialize() for i in lines if i.frame == 4] # why 4?
     frame4=b''.join(frame4)
