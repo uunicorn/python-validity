@@ -160,9 +160,14 @@ def enroll(identity, subtype):
     while True:
         glow_start_scan()
 
-        err = capture(enroll_prg)
-        if err != 0:
-            print('Error %08x, try again' % err)
+        try:
+            err = capture(enroll_prg)
+            if err != 0:
+                print('Error %08x, try again' % err)
+                continue
+        except Exception as e:
+            print('Capture failed (%s), try again' % repr(e))
+            sleep(1)
             continue
         
         key = enrollment_update_start(key)
