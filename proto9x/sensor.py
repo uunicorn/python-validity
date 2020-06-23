@@ -89,60 +89,62 @@ def capture(prg):
 
     return error
 
-def append_new_image(key=0, prev=b''):
+def enrollment_update_start(key=0):
     rsp=tls.app(pack('<BLL', 0x68, key, 0))
     assert_status(rsp)
     new_key, = unpack('<L', rsp[2:])
 
     usb.wait_int()
 
+    return new_key
 
+def enrollment_update_end():
+    assert_status(tls.app(pack('<BL', 0x69, 0)))
+
+def enrollment_update(prev):
     write_enable()
     rsp=tls.app(b'\x6b' + prev)
     assert_status(rsp)
     flush_changes()
+
+    return rsp[2:]
+
+def append_new_image(key=0, prev=b''):
+    enrollment_update(prev)
     
     usb.wait_int()
 
-    write_enable()
-    rsp=tls.app(b'\x6b' + prev)
-    assert_status(rsp)
-    flush_changes()
-    
-    res=rsp[2:]
-
-    rsp=tls.app(unhexlify('6900000000'))
-    assert_status(rsp)
+    res = enrollment_update(prev)
 
     l, res = res[:2], res[2:]
     l, = unpack('<H', l)
     if l != len(res):
         raise Exception('Response size does not match %d != %d', l, len(res))
 
-    # FIXME check how it's done rather than using a hardcoded offsets
-    res, new = res[:0x74], res[0x74:]
+    magic_len = 0x38 # hardcoded in the DLL
+    template = header = tid = None
 
-    return (new_key, res, new)
+    while len(res) > 0:
+        tag, l = unpack('<HH', res[:4])
 
-def parse_template(subtype, template):
-    # This number is very odd. It seems to be always a multiple of 0x10,
-    # which probably means that this is not a size of the plain text.
-    # On the other hand it is exactly 0x30 bytes less than the size of the payload.
-    # If we assume algos are all the same, 0x30 could be 0x10 for AES IV and
-    # 0x20 for SHA256 MAC
-    ciphertext_size, = unpack('<H', template[2:4])
-    template_size = 8+ciphertext_size+0x30
-    template, rest = template[:template_size], template[template_size:]
+        if tag == 0:
+            template = res[:magic_len+l]
+        elif tag == 1:
+            header = res[magic_len:magic_len+l]
+        elif tag == 3:
+            tid = res[magic_len:magic_len+l]
+        else:
+            print('Ignoring unknown tag %x' % tag)
+            
+        res=res[magic_len+l:]
 
-    template = pack('<H', len(template)) + template
+    return (header, template, tid)
 
-    # FIXME this is most likely wrong, need to do a proper code dive to figure out
-    # how enrollment update response is handled in the dll
-    hs, rest = rest[-0x20:], rest[:-0x20]
-    hs = pack('<H', len(hs)) + hs
+def make_finger_data(subtype, template, tid):
+    template = pack('<HH', 1, len(template)) + template
+    tid = pack('<HH', 2, len(tid)) + tid
 
-    tinfo = pack('<H', 1) + template
-    tinfo += pack('<H', 2) + hs
+    tinfo = template + tid
 
     tinfo = pack('<HHHH', subtype, 3, len(tinfo), 0x20) + tinfo
     tinfo += b'\0' * 0x20
@@ -163,17 +165,18 @@ def enroll(identity, subtype):
             print('Error %08x, try again' % err)
             continue
         
-        key, rsp, template = append_new_image(key, template)
+        key = enrollment_update_start(key)
+        header, template, tid = append_new_image(key, template)
+        enrollment_update_end()
 
-        print(hexlify(rsp))
-        print('Progress: %d %% done' % rsp[0x3a])
-        
-        if rsp[0x3a] == 100:
+        print(hexlify(header))
+
+        if tid:
             break
 
-    # FIXME check for duplicates
+    # TODO check for duplicates
 
-    tinfo = parse_template(subtype, template)
+    tinfo = make_finger_data(subtype, template, tid)
 
     usr=db.lookup_user(identity)
     if usr == None:
