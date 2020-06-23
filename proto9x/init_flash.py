@@ -26,12 +26,20 @@ flash_layout_hardcoded=[
     PartitionInfo(4,  3,    5,      0x00050000,  0x00080000), # template database
 ]
 
-partition_signature=unhex('''
+partition_signature_009a=unhex('''
 1db02a886b007e2b47263bb8fe30bd64a1f58bea7b25f1e1ba9ae09add7ecff36333f8198339cdd713f043633710a17bc7b3f418f1d8ff435a1bf47f065dffca
 727109152217fce73bf2bf8e01a1641f6a24b0c492a6a3f10114057275846842b1c8b66bd6700738524d4471bca3315ba23bb832743220ad195b60558aa79a3e
 deb2604834e2bb62e890b0ce405b3b8ef2fec2aab3e22bff23f89a58ff0dc015fece5d3ed3f5496ace879a92980aec9d85eb7e9df245eae03a41acfd4e7d1cb1
 dbd0df42d534904de00b6389f68867646e9d7c3d0b1dffd74070b2d0f2049b9f1dc7b0c9651c59be3ea891674725e1f2f7a484a941615b80211105978369cf71
 ''')
+
+def get_partition_signature():
+    if usb.usb_dev().idVendor == 0x06cb:
+        if usb.usb_dev().idProduct == 0x009a:
+            return partition_signature_009a
+    
+    return b''
+
 
 def with_hdr(id, buf):
     return pack('<HH', id, len(buf)) + buf
@@ -82,7 +90,7 @@ def partition_flash(layout, client_public):
 
     cmd = unhex('4f 0000 0000')
     cmd += with_hdr(0, serialize_flash_params(info.ic)) 
-    cmd += with_hdr(1, b''.join([serialize_partition(p) for p in layout]) + partition_signature)
+    cmd += with_hdr(1, b''.join([serialize_partition(p) for p in layout]) + get_partition_signature())
     cmd += with_hdr(5, make_cert(client_public))
     cmd += with_hdr(3, crt_hardcoded)
     rsp = tls.cmd(cmd)
