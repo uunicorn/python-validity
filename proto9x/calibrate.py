@@ -37,6 +37,16 @@ def persist_calib_data(calib_data):
 
     write_flash_all(6, 0, calib_data)
 
+def make_calib_data(calib_data):
+    lines=[calib_data[i:i+0x70+8] for i in range(0, len(calib_data), 0x70+8)] # TODO work out where "bytes per line" constant is comming from
+    lines=[Line(i) for i in lines]
+    frame2=[i.serialize() for i in lines if i.frame == 2] # why 2?
+    frame2=b''.join(frame2[::2])
+    calib_data=pack('<H', len(frame2)) + frame2 + pack('<H', 0) # what's that 00000 in the end?
+    calib_data=pack('<H', len(calib_data)) + sha256(calib_data).digest() + b'\0'*0x20 + calib_data
+    calib_data=unhexlify('0250') + calib_data
+    return calib_data
+
 def calibrate(calib_data_path='calib-data.bin'):
     # no idea what this is:
     write_hw_reg32(0x8000205c, 7)
@@ -82,13 +92,7 @@ def calibrate(calib_data_path='calib-data.bin'):
         with open(calib_data_path, 'wb') as f:
             f.write(calib_data)
 
-    lines=[calib_data[i:i+0x70+8] for i in range(0, len(calib_data), 0x70+8)] # TODO work out where "bytes per line" constant is comming from
-    lines=[Line(i) for i in lines]
-    frame4=[i.serialize() for i in lines if i.frame == 4] # why 4?
-    frame4=b''.join(frame4)
-    calib_data=pack('<H', len(frame4)) + frame4 + pack('<H', 0) # what's that 00000 in the end?
-    calib_data=pack('<H', len(calib_data)) + sha256(calib_data).digest() + b'\0'*0x20 + calib_data
-    calib_data=unhexlify('0250') + calib_data
+    calib_data=make_calib_data(calib_data)
 
     persist_calib_data(calib_data)
     # no need to reboot
