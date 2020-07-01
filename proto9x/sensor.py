@@ -204,7 +204,7 @@ class Sensor():
         print('Opening sensor: %s' % self.device_info.name)
         self.type_info = SensorTypeInfo.get_by_type(self.device_info.type)
         
-        if self.device_info.type == 0x199 or self.device_info.type == 0xdb:
+        if self.device_info.type == 0x199:
             self.lines_per_frame = 0xe0 # valid for 0x199, TODO: figure out where this number is coming from
             self.bytes_per_line = 0x78
             self.key_calibration_line = 0x38 # (lines_per_calibration_data/2), but hardcoded for sensor type 0x199
