@@ -1,14 +1,18 @@
 
+from enum import Enum
+
 from .tls import tls
 from .usb import usb
 from .db import db, subtype_to_string
 from .flash import write_enable, flush_changes
 from time import sleep
 from struct import pack, unpack
+from .table_types import SensorTypeInfo
 from binascii import hexlify, unhexlify
 from .util import assert_status, unhex
 from .hw_tables import dev_info_lookup
 from .blobs import identify_prg, enroll_prg, reset_blob
+from . import timeslot as prg
 
 def glow_start_scan():
     cmd=unhexlify('3920bf0200ffff0000019900200000000099990000000000000000000000000020000000000000000000000000ffff000000990020000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000')
@@ -53,10 +57,10 @@ def wait_till_finished():
 def stop_prg():
     return tls.app(unhexlify('5100200000'))
 
-def capture(prg):
+def capture(b):
     usb.purge_int_queue()
 
-    start_scan(prg)
+    start_scan(b)
 
     b=usb.wait_int()
     if b[0] != 0:
@@ -313,7 +317,9 @@ def factory_reset():
     reboot()
 
 def identify_sensor():
-    rsp=tls.cmd(b'\x75')
+    #rsp=tls.cmd(b'\x75')
+    rsp=unhexlify('0000000000005a009001');
+
     assert_status(rsp)
     rsp=rsp[2:]
 
@@ -324,3 +330,345 @@ def identify_sensor():
 
     return dev_info_lookup(major, minor)
 
+# <<< 0000 880d 0000 07000000
+#      08000000 9400 0e00 0300 0080 07000000 7e7f807f808080808080808080808080808080808080818081808180818080808080818081808080818081808180
+#      a4000000 0800 0e00 0200 0000 00000000 0d007100
+#      b4000000 0800 0e00 0800 0080 db000000 00000000
+#      c4000000 0400 0e00 0500 0080 1c6f0400
+#      d0000000 9400 0e00 0700 0080 07000000 2b23203c2d182e1e30182e1c321d341d341e321c301e1e241e201f201d1c321a301e1c211e21341f1e202024201f
+#      6c010000 1400 0e00 0f00 0080 05550007 7701002805720000080100020811e107
+#      88010000 0c00 0e00 1200 0080 07000000 7002 7800 7002 7800
+def get_factory_bits(tag):
+    #rsp=tls.cmd(pack('<B H LL', 0x6f, tag, 0, 0))
+
+    # 6f 000e 00000000 response from the 009a logs:
+    rsp=unhex('''
+    0000a80200000c0000000800000074000e0003000080070000007e7e7c767d7a737a807c7c7975847f85858184888786888a8a8a8c8d8b85878c8689878689898484837d8b8b8289898d8f8c90908f86858c8b8d90908b848f8694928a8e908d8e8d898d8d8c8e8f8d8c878986808a8a818686848187888c8e7e7e85888989857f8077777b7872767c7e8400000074000e0003000080070000007e7e7c767d7a737a807c7c7975847f85858184888786888a8a8a8c8d8b85878c8689878689898484837d8b8b8289898d8f8c90908f86858c8b8d90908b848f8694928a8e908d8e8d898d8d8c8e8f8d8c878986808a8a818686848187888c8e7e7e85888989857f8077777b7872767c7e0001000034020e000c00008007000000010205060504040708060403050709080705040401fffdfbfdfdfcfaf8f7f7f7f7f5f5f5f5f4f6f6f5f4f6fbff00fffcfaf9f7f7f5f6f6f9fcfdfefefefdfcfdfdfdfd000202020303020103050609090c0e100f0a0909080501ffff00020303020201ff0000fffefcfcfbfbfdff0000f0f4f5f5f7f9fbfaf5f3f3f6f5f6f7f7f6f6f7f8f9f9fbfafbfdfe00000101020306080a0a09080706040303030403050204050704fcf7f6f9fbfdff000306090a0909090b0d0e0e0e0d0c0d0e0c07070a0c090603020100fefbfafafcfcfdfcfcfbfaf9fafbff000201ff0003060403f1f3f2f3f4f3f0eff0f1f2f2f2f0f0f1f1eff0f2f6f8fcff04090c0d0c0f1013141617191c1d1e1c1a1b1c1e1c1c19141210100b07090f141614110f0f0d090401fffffdfefaf7f2f0edececebebeceff1f1efeef0f4f6f5f2eff1f4f5f6f6f5f5f5f5f5f4f5f7f6f4f2f4f4f7f9f9f9ebfafbfaf7f8f6f5f4f1f0f0f2f2f4f3f1eff0f4f7fbfd00030407070a0c1115151515171b1e1d1d1c1d2022201e1d1e20212324231e1a1c1d1b1b1a17120f0e0a080500fdfbfbf9f5f2f1f0f0f0f0efedeef0f1eeebeaeaeceff0efedebe9e9e9e9eae9e8ebeef1f2f4f3f3f2f3f7f9eff2f3f4f9fafcfbfbfaf7f6f6f8f9f8f7f7f9f9f8f7f6f5f6f6f9fafcfbfbfafafaf7f7f7f8f8fafafbfbff0000fdfbfafcfdfffefe0003050503010001050a101313110f0d09070400fefcfe000101fcf9f8f7f6f4f5f4f8fcff01020100fdf8f7f9fc000102fdfbfbfdff000407083c03000034020e000c00008007000000010205060504040708060403050709080705040401fffdfbfdfdfcfaf8f7f7f7f7f5f5f5f5f4f6f6f5f4f6fbff00fffcfaf9f7f7f5f6f6f9fcfdfefefefdfcfdfdfdfd000202020303020103050609090c0e100f0a0909080501ffff00020303020201ff0000fffefcfcfbfbfdff0000f0f4f5f5f7f9fbfaf5f3f3f6f5f6f7f7f6f6f7f8f9f9fbfafbfdfe00000101020306080a0a09080706040303030403050204050704fcf7f6f9fbfdff000306090a0909090b0d0e0e0e0d0c0d0e0c07070a0c090603020100fefbfafafcfcfdfcfcfbfaf9fafbff000201ff0003060403f1f3f2f3f4f3f0eff0f1f2f2f2f0f0f1f1eff0f2f6f8fcff04090c0d0c0f1013141617191c1d1e1c1a1b1c1e1c1c19141210100b07090f141614110f0f0d090401fffffdfefaf7f2f0edececebebeceff1f1efeef0f4f6f5f2eff1f4f5f6f6f5f5f5f5f5f4f5f7f6f4f2f4f4f7f9f9f9ebfafbfaf7f8f6f5f4f1f0f0f2f2f4f3f1eff0f4f7fbfd00030407070a0c1115151515171b1e1d1d1c1d2022201e1d1e20212324231e1a1c1d1b1b1a17120f0e0a080500fdfbfbf9f5f2f1f0f0f0f0efedeef0f1eeebeaeaeceff0efedebe9e9e9e9eae9e8ebeef1f2f4f3f3f2f3f7f9eff2f3f4f9fafcfbfbfaf7f6f6f8f9f8f7f7f9f9f8f7f6f5f6f6f9fafcfbfbfafafaf7f7f7f8f8fafafbfbff0000fdfbfafcfdfffefe0003050503010001050a101313110f0d09070400fefcfe000101fcf9f8f7f6f4f5f4f8fcff01020100fdf8f7f9fc000102fdfbfbfdff000407087805000014000e000f00008005550007890312000587000781010026040fe3079405000014000e000f00008005550007890312000587000781010026040fe307b005000008000e00080000809901000000000000c005000008000e00080000809901000000000000d005000008000e0002000000000000005a009001e005000008000e0002000000000000005a009001f005000004000e00050000803a690200fc05000004000e00050000803a690200
+    ''')
+
+    assert_status(rsp)
+    rsp=rsp[2:]
+
+    wtf, entries = unpack('<LL', rsp[:8])
+    rsp = rsp[8:]
+
+    rc={}
+    for x in range(0, entries):
+        hdr, rsp = rsp[:12], rsp[12:]
+        ptr, l, tag, subtag, flags = unpack('<LHHHH', hdr)
+        value = rsp[:l]
+
+        if len(value) != l:
+            raise Exception('Truncated response %d != %d' % (len(value), l))
+        
+        rc[subtag] = value
+        rsp = rsp[l:]
+
+    if len(rsp) > 0:
+        raise Exception('Garbage at the end of reply')
+
+    return rc
+
+# hardcoded bit of cmd02 program. valid only for 009a
+# TODO: properly extract all these bits from the DLL
+hardcoded=unhex('''
+23000000200008000020008000000100320074000000008020200400242000005020773628200100302001003c208000082138000c210000482107004c210000582000005c20000060200000682005006c20014970200141742001887820018084202000942001809c200902a0200b19b4200300b8203b04bc201400c0200200c4200100c82002003300100000000080cc200000f503d0200000a1013200440000000080dc20e803e0206401e420d002e8200001f0200500f8200500fc200000b8203a00000804001408000008080000080800001408300008080000140831001c081a0032000c0000000080501101004c111e00340078010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010221710221710221610221610221601065010250101000007c8078c06ff0000000000004f80006d0300280307030990098db00b90880991858e08c1810b9190910ac1b8928a0993878a890b9388898908c88191890ac8889289099a818a890b9a88898908d08191890ad08892890802818a095a810a0288890b5a8808d98189890ad9908989095e8289890b5e88898908e18189890ae190898909648289890b648889096e8108e981890b6e880ae99091b9096f828a8f0b6f88918908f0818a890af090898909768289910b76b8918a08f88792910af8888a92097c81898a0b7c09018089890b01888991097f8189920b7f09088089920b088889920c07030307200402000000002f0004007000000029000400700000003500040080000000'
+''')
+
+
+def bitpack(b):
+    l=len(b)
+    m=min(b)
+    x=max(b)
+
+    # maximum delta which we must encode
+    x-=m
+
+    # count useful bits
+    u=0
+    while x > 0:
+        x>>=1
+        u+=1
+
+    # convert to array of binary strings with each element exactly u characters long
+    b=[bin(i-m+0x100)[-u:] for i in b]
+
+    # combine chunks into one long text number with u*l binary digits and parse it as integer
+    b=int(''.join(b[::-1]), 2)
+
+    # convert back to bytes
+    b=b.to_bytes((u*l+7)//8, 'little')
+
+    return (u, m, b)
+
+class Line():
+    mask=None
+    flags=None
+    data=None
+    v0=0
+    v1=0
+    v2=0
+
+def clip(x):
+    if x < -128:
+        x=-128
+
+    if x > 127:
+        x=127
+
+    return x & 0xff
+
+def scale(x):
+    x -= 0x80
+    x = int(x*10/0x22) # TODO: scaling factor depends on a device
+    return clip(x)
+
+
+def add(l, r):
+    # Make signed
+    l, r = unpack('bb', pack('BB', l, r))
+    return clip(l+r)
+
+def chunks(b, l):
+    return [b[i:i+l] for i in range(0, len(b), l)]
+
+class CaptureMode(Enum):
+    CALIBRATE=1
+    IDENTIFY=2
+    ENROLL=3
+
+class Sensor():
+    calib_data=b''
+
+    def open(self):
+        self.device_info = identify_sensor()
+
+        print('Opening sensor: %s' % self.device_info.name)
+        self.type_info = SensorTypeInfo.get_by_type(self.device_info.type)
+        
+        if self.device_info.type == 0x199:
+            self.lines_per_frame = 0xe0 # valid for 0x199, TODO: figure out where this number is coming from
+            self.bytes_per_line = 0x78
+            self.key_calibration_line = 0x38 # (lines_per_calibration_data/2), but hardcoded for sensor type 0x199
+        else:
+            raise Exception('Device %s is not supported', self.device_info.name)
+
+        factory_bits = get_factory_bits(0x0e00)
+        self.factory_calibration_values = factory_bits[3][4:]
+
+
+    # This is the exact logic from the DLL. 
+    # If it looks broken that was probably intended.
+    def patch_timeslot_table(self, b, inc_address, mult):
+        b=bytearray(b)
+        i=0
+        while i+3 < len(b):
+            if b[i] & 0xf8 == 0x10:
+                if b[i+2] > 1:
+                    b[i+2] *= mult
+                    if inc_address:
+                        b[i+1] += 1
+                i+=3
+                continue
+
+            if b[i] == 0:
+                i+=1
+                continue
+
+            if b[i] == 7:
+                i+=2
+                continue
+
+            break
+
+        return bytes(b)
+
+    def patch_timeslot_again(self, b):
+        b=bytearray(b)
+
+        pc = 0
+        match=None
+        # Look for the last Call in the script
+        while pc < len(b):
+            opcode, l, *operands = prg.decode_insn(b[pc:])
+
+            # End of Table, Return, End of Data
+            if opcode == 1 or opcode == 2 or opcode == 4:
+                break
+
+            # Call
+            if opcode == 11:
+                match = operands[1] # destination address
+
+            pc += l
+
+        if match is None:
+            return bytes(b)
+
+        pc = match
+        match = None
+        # Look for the last Register Write to 0x8000203C
+        while pc < len(b):
+            opcode, l, *operands = prg.decode_insn(b[pc:])
+
+            # End of Table, Return, End of Data
+            if opcode == 1 or opcode == 2 or opcode == 4:
+                break
+
+            # Write Register
+            if opcode == 13 and operands[0] == 0x8000203c:
+                match = pc
+
+            pc += l
+
+        if match is None:
+            return bytes(b)
+
+        # Hack the value to be taken from the factory calibration table right in the middle of a sensor
+        b[match+1] = self.factory_calibration_values[self.key_calibration_line]
+
+        return bytes(b)
+
+    def process_calibration_results(self, raw_calib_data):
+        frame_size = self.lines_per_frame * self.bytes_per_line
+        interleave_lines = self.lines_per_frame // self.type_info.lines_per_calibration_data # 2, TODO: algo is quite different when it is 1
+        input_frames = 3 # len(raw_calib_data)//lines_per_frame//bytes_per_line, TODO: workout where it's really comming from
+        
+        # skip the first frame
+        input_frames -= 1
+        base_address = frame_size
+        frame=raw_calib_data[base_address:base_address+frame_size]
+
+        # split into groups of lines
+        frame=chunks(frame, interleave_lines*self.bytes_per_line)
+
+        # split group of lines into lines
+        frame=[chunks(f, self.bytes_per_line) for f in frame]
+        
+        # calculate averages across interleaved lines
+        frame=[bytes([sum(i)//len(f) for i in zip(*f)]) for f in frame]
+        
+        # apply scaling factors
+        frame=[f[:8] + bytes(map(scale, f[8:])) for f in frame]
+        frame=b''.join(frame)
+
+        if len(self.calib_data) > 0:
+            # Not the first calibration run. Combine results
+            # split previous calibration info into lines
+            lll=chunks(self.calib_data, self.bytes_per_line)
+
+            # split next calibration info into lines
+            rrr=chunks(frame, self.bytes_per_line)
+            
+            # Don't touch the first 8 bytes of each line, add everything else as signed characters, clipping the values
+            combined=[ll[:8] + bytes([add(l, r) for l, r in zip(ll[8:],rr[8:])]) for ll, rr in zip(lll, rrr)]
+            self.calib_data = bytes(b''.join(combined))
+        else:
+            self.calib_data = frame
+
+    def get_key_line(self):
+        if len(self.calib_data) > 0:
+            bytes_per_calibration_line=len(self.calib_data) // self.type_info.lines_per_calibration_data
+            key_line_offset=8+bytes_per_calibration_line*self.key_calibration_line
+            key_line=self.calib_data[key_line_offset:key_line_offset+self.type_info.line_width]
+            key_line=bytes([i-1 if i == 5 else i for i in key_line])
+        else:
+            key_line=b'\0'*self.type_info.line_width
+
+        return key_line
+            
+
+
+    def build_cmd_02(self, mode):
+        chunks=list(prg.split_chunks(hardcoded))
+
+        for c in chunks:
+            # patch the 2D params. 
+            # The following is only needed on some hw versions below 6.5 as reported by cmd_01
+            #if c[0] == 0x2f:
+            #    c[1] = pack('<L', unpack('<L', c[1])[0]*mult)
+
+            # Timeslot Table 2D
+            if c[0] == 0x34:
+                # TODO: figure out when to use multiplier and address increment
+                tst = self.patch_timeslot_table(c[1], True, 2)
+                if mode != CaptureMode.CALIBRATE:
+                    tst=self.patch_timeslot_again(tst)
+                c[1] = self.get_key_line() + tst[self.type_info.line_width:]
+
+        #---------------- Reply Configuration ---------------
+        chunks += [[0x17, b'']]
+
+        if mode == CaptureMode.IDENTIFY:
+            # This type of fragment is not present in the debugging dump routine.
+            # It seems to be only used for identification and it looks almost identical to Finger Detect (0x26)
+            # Seems to be the same all the time for a given sensor and mostly hardcoded
+            # TODO: analyse construct_wtf_4e @0000000180090BF0
+            chunks += [[0x4e, unhexlify('fbb20f0000000f00300000008700020067000a00018000000a0200000b1900008813b80b01091000')]]
+            # Image Reconstruction.
+            # TODO: analyse add_image_reconstruction_cmd_02_buff_list_item @000000018008EA70
+            chunks += [[0x2e, unhexlify('0200180002000000700070004d010000a0008c003c32321e3c0a0202')]]
+        elif mode == CaptureMode.ENROLL:
+            chunks += [[0x26, unhexlify('fbb20f0000000f00300000008700020067000a00018000000a0200000b19000050c360ea01091000')]]
+            # Image Reconstruction. There is only one byte difference with the "identify" version. (same is true for 0097)
+            chunks += [[0x2e, unhexlify('0200180023000000700070004d010000a0008c003c32321e3c0a0202')]]
+
+        #---------------- Interleave ---------------
+        chunks += [[0x44, pack('<L', 1)]]
+
+        lines=[]
+        cnt=2 # TODO figure out why 2
+
+        l=Line()
+        lines += [l]
+        l.mask = 0xff
+        # Find 2nd "Enable Rx" instruction
+        pc, _ = prg.find_nth_insn(tst, 6, 2) 
+        l.flags = (pc + 1) | (cnt << 0x14) | 0x7000000
+        l.data = self.type_info.calibration_blob
+        l.v0 = 0xf
+        cnt += 1
+
+        l=Line()
+        lines += [l]
+        l.mask = 0xff
+        # Find 1st "Write Register" instruction to the 0x8000203C port
+        pc, _ = prg.find_nth_regwrite(tst, 0x8000203C, 1) 
+        l.flags = (pc + 1) | (cnt << 0x14) | 0x7000000
+        l.v0, l.v1, l.data = bitpack(self.factory_calibration_values)
+        l.v0 = (l.v0-1) | 8
+        cnt += 1
+
+        if len(self.calib_data) > 0:
+            bytes_per_calibration_line=len(self.calib_data) // self.type_info.lines_per_calibration_data
+
+            for i in range(0, 112, 4):
+                l=Line()
+                lines += [l]
+                l.mask=0xffffffff
+                l.flags=i | (0x85 << 24)
+                l.data=b''
+                for j in range(0, 112):
+                    p=8+j*bytes_per_calibration_line+i
+                    l.data += self.calib_data[p:p+4]
+            
+        #---------------- Line Update ---------------
+        line_update = pack('<L', len(lines))
+        line_update += b''.join([pack('<LL', l.mask, l.flags) for l in lines])
+
+        # TODO make sure the alignment is always correct (it's fine for 112 pixel device by coincidence)
+        line_update += b''.join([l.data for l in lines if ((l.flags & 0x00f00000) >> 0x14) <= 1])
+        chunks += [[0x30, line_update]]
+
+        #---------------- Line Update Transform ---------------
+        update_transform = b''.join([pack('<BBH', l.v0, l.v1, l.v2) + l.data for l in lines if ((l.flags & 0x00f00000) >> 0x14) > 1])
+        chunks += [[0x43, update_transform]]
+
+        if mode == CaptureMode.CALIBRATE:
+            req_lines = 3*self.lines_per_frame+1 # TODO: figure out how this is actually calculated
+        else:
+            req_lines = 0
+
+        return pack('<BHH', 2, self.bytes_per_line, req_lines) + prg.merge_chunks(chunks)
+
+sensor = Sensor()
