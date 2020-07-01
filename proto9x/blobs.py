@@ -5,9 +5,6 @@ class Blobs(Enum):
     init_hardcoded_clean_slate = auto()
     reset_blob = auto()
     db_write_enable = auto()
-    identify_prg = auto()
-    enroll_prg = auto()
-    calibrate_prg = auto()
 
 
 def __load_blob(blob):

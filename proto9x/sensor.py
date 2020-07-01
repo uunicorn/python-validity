@@ -4,15 +4,17 @@ from enum import Enum
 from .tls import tls
 from .usb import usb
 from .db import db, subtype_to_string
-from .flash import write_enable, flush_changes
+from .flash import write_enable, flush_changes, read_flash, write_flash_all
 from time import sleep
 from struct import pack, unpack
 from .table_types import SensorTypeInfo
 from binascii import hexlify, unhexlify
 from .util import assert_status, unhex
 from .hw_tables import dev_info_lookup
-from .blobs import identify_prg, enroll_prg, reset_blob
+from .blobs import reset_blob
 from . import timeslot as prg
+
+calib_data_path='calib-data.bin'
 
 def glow_start_scan():
     cmd=unhexlify('3920bf0200ffff0000019900200000000099990000000000000000000000000020000000000000000000000000ffff000000990020000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000')
@@ -20,9 +22,6 @@ def glow_start_scan():
 
 def glow_end_enroll():
     cmd=unhexlify('39f4010000f401000001ff002000000000ffff0000000000000000000000000020000000000000000000000000f401000000ff0020000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000')
-    assert_status(tls.app(cmd))
-
-def start_scan(cmd):
     assert_status(tls.app(cmd))
 
 def cancel_capture():
@@ -57,245 +56,6 @@ def wait_till_finished():
 def stop_prg():
     return tls.app(unhexlify('5100200000'))
 
-def capture(b):
-    usb.purge_int_queue()
-
-    start_scan(b)
-
-    b=usb.wait_int()
-    if b[0] != 0:
-        raise Exception('Unexpected interrupt type %s' % hexlify(b).decode())
-
-    try:
-        wait_for_finger()
-        #wait_till_finished()
-    
-        while True:
-            b=usb.wait_int()
-            if b[0] != 3:
-                raise Exception('Unexpected interrupt type %s' % hexlify(b).decode())
-
-            if b[2] & 4:
-                break
-    finally:
-        res=stop_prg()
-
-    assert_status(res)
-    res = res[2:]
-    
-    l, res = res[:4], res[4:]
-    l, = unpack('<L', l)
-
-    if l != len(res):
-        raise Exception('Response size does not match %d != %d', l, len(res))
-
-    x, y, w1, w2, error = unpack('<HHHHL', res)
-
-    return error
-
-def enrollment_update_start(key=0):
-    rsp=tls.app(pack('<BLL', 0x68, key, 0))
-    assert_status(rsp)
-    new_key, = unpack('<L', rsp[2:])
-
-    usb.wait_int()
-
-    return new_key
-
-def enrollment_update_end():
-    assert_status(tls.app(pack('<BL', 0x69, 0)))
-
-def enrollment_update(prev):
-    write_enable()
-    rsp=tls.app(b'\x6b' + prev)
-    assert_status(rsp)
-    flush_changes()
-
-    return rsp[2:]
-
-def append_new_image(key=0, prev=b''):
-    enrollment_update(prev)
-    
-    usb.wait_int()
-
-    res = enrollment_update(prev)
-
-    l, res = res[:2], res[2:]
-    l, = unpack('<H', l)
-    if l != len(res):
-        raise Exception('Response size does not match %d != %d', l, len(res))
-
-    magic_len = 0x38 # hardcoded in the DLL
-    template = header = tid = None
-
-    while len(res) > 0:
-        tag, l = unpack('<HH', res[:4])
-
-        if tag == 0:
-            template = res[:magic_len+l]
-        elif tag == 1:
-            header = res[magic_len:magic_len+l]
-        elif tag == 3:
-            tid = res[magic_len:magic_len+l]
-        else:
-            print('Ignoring unknown tag %x' % tag)
-            
-        res=res[magic_len+l:]
-
-    return (header, template, tid)
-
-def make_finger_data(subtype, template, tid):
-    template = pack('<HH', 1, len(template)) + template
-    tid = pack('<HH', 2, len(tid)) + tid
-
-    tinfo = template + tid
-
-    tinfo = pack('<HHHH', subtype, 3, len(tinfo), 0x20) + tinfo
-    tinfo += b'\0' * 0x20
-
-    return tinfo
-
-def enroll(identity, subtype):
-    key=0
-    template=b''
-
-    print('Waiting for a finger...')
-
-    while True:
-        glow_start_scan()
-
-        try:
-            err = capture(enroll_prg)
-            if err != 0:
-                print('Error %08x, try again' % err)
-                continue
-        except Exception as e:
-            print('Capture failed (%s), try again' % repr(e))
-            sleep(1)
-            continue
-        
-        key = enrollment_update_start(key)
-        header, template, tid = append_new_image(key, template)
-        enrollment_update_end()
-
-        print(hexlify(header))
-
-        if tid:
-            break
-
-    # TODO check for duplicates
-
-    tinfo = make_finger_data(subtype, template, tid)
-
-    usr=db.lookup_user(identity)
-    if usr == None:
-        usr = db.new_user(identity)
-    else:
-        usr = usr.dbid
-    
-    recid = db.new_finger(usr, tinfo)
-
-    glow_end_enroll()
-
-    print('All done')
-
-    return recid
-
-def parse_dict(x):
-    rc={}
-
-    while len(x) > 0:
-        (t, l), x = unpack('<HH', x[:4]), x[4:]
-        rc[t], x = x[:l], x[l:]
-
-    return rc
-
-    
-def identify():
-    glow_start_scan()
-    try:
-        err = capture(identify_prg)
-        if err != 0:
-            raise Exception('Capture failed: %08x' % err)
-
-        # which finger?
-        stg_id=0 # match against any storage
-        usr_id=0 # match against any user
-        cmd=pack('<BBBHHHHH', 0x5e, 2, 0xff, stg_id, usr_id, 1, 0,0)
-        rsp=tls.app(cmd)
-        assert_status(rsp)
-
-        b = usb.wait_int()
-        if b[0] != 3:
-            raise Exception('Identification failed: %s' % hexlify(b).decode())
-
-        rsp = tls.app(unhexlify('6000000000'))
-        assert_status(rsp)
-        rsp = rsp[2:]
-
-    finally:
-        # finish
-        assert_status(tls.app(unhexlify('6200000000')))
-
-    (l,), rsp = unpack('<H', rsp[:2]), rsp[2:]
-    if l != len(rsp):
-        raise Exception('Response size does not match')
-
-    rsp=parse_dict(rsp)
-
-
-    #for k in rsp:
-    #    print('%04x: %s (%d)' % (k, hexlify(rsp[k]).decode(), len(rsp[k])))
-    
-#on 0097
-#0001: 09000000 (4)
-#0003: f500 (2)
-#0004: 8dee792532d3432d41c872fd4d6d590fbc855ad449cf2753cd919eb9c94675c6 (32)
-#0005: 0000000000000000000000000000000000000000000000000000000000000000 (32)
-#0008: 0a00 (2) <-- finger record db id
-#0002: 010b0000 (4)
-#0006: 00000000000000000000000000000000000000000000000000000000000000000000000000000000 (40)
-
-#on 009a (no finger record db id)
-#0000 8a00
-# 0100 0400 05000000
-# 0300 0200 f500
-# 0400 2000 b147dd1eda8da322fb7a2a51d0eab6fe94bef46c05204fbefb1fd16360903791
-# 0500 2000 0000000000000000000000000000000000000000000000000000000000000000
-# 0200 0400 650a0000
-# 0600 2800 00000000000000000000000000000000000000000000000000000000000000000000000000000000
-
-    usrid, subtype, hsh = rsp[1], rsp[3], rsp[4]
-    usrid, = unpack('<L', usrid)
-    subtype, = unpack('<H', subtype)
-
-    usr = db.get_user(usrid)
-    fingerids = [f['dbid'] for f in usr.fingers if f['subtype'] == subtype]
-    if len(fingerids) != 1:
-        raise Exception('Unexpected matching finger count')
-    finger_record = db.get_record_children(fingerids[0])
-
-    # Device won't let you add more than one data blob
-    if len(finger_record.children) > 1:
-        raise Exception('Expected only one child record for finger')
-
-    print('Recognised finger %02x (%s) from user %s' % (subtype, subtype_to_string(subtype), repr(usr.identity)))
-    print('Template hash: %s' % hexlify(hsh).decode())
-
-    if len(finger_record.children) > 0:
-        if finger_record.children[0]['type'] != 8:
-            raise Exception('Expected data blob as a finger child')
-        
-        blob_id = finger_record.children[0]['dbid']
-        blob = db.get_record_value(blob_id).value
-
-        tag, sz = unpack('<HH', blob[:4])
-        val = blob[4:4+sz]
-
-        print('Data blob associated with the finger: %04x: %s' % (tag, hexlify(val).decode()))
-        
-    return rsp
-
 
 def read_hw_reg32(addr):
     rsp=tls.cmd(pack('<BLB', 7, addr, 4))
@@ -317,8 +77,8 @@ def factory_reset():
     reboot()
 
 def identify_sensor():
-    #rsp=tls.cmd(b'\x75')
-    rsp=unhexlify('0000000000005a009001');
+    rsp=tls.cmd(b'\x75')
+    #rsp=unhexlify('0000000000005a009001');
 
     assert_status(rsp)
     rsp=rsp[2:]
@@ -339,12 +99,10 @@ def identify_sensor():
 #      6c010000 1400 0e00 0f00 0080 05550007 7701002805720000080100020811e107
 #      88010000 0c00 0e00 1200 0080 07000000 7002 7800 7002 7800
 def get_factory_bits(tag):
-    #rsp=tls.cmd(pack('<B H LL', 0x6f, tag, 0, 0))
+    rsp=tls.cmd(pack('<B H HL', 0x6f, tag, 0, 0))
 
     # 6f 000e 00000000 response from the 009a logs:
-    rsp=unhex('''
-    0000a80200000c0000000800000074000e0003000080070000007e7e7c767d7a737a807c7c7975847f85858184888786888a8a8a8c8d8b85878c8689878689898484837d8b8b8289898d8f8c90908f86858c8b8d90908b848f8694928a8e908d8e8d898d8d8c8e8f8d8c878986808a8a818686848187888c8e7e7e85888989857f8077777b7872767c7e8400000074000e0003000080070000007e7e7c767d7a737a807c7c7975847f85858184888786888a8a8a8c8d8b85878c8689878689898484837d8b8b8289898d8f8c90908f86858c8b8d90908b848f8694928a8e908d8e8d898d8d8c8e8f8d8c878986808a8a818686848187888c8e7e7e85888989857f8077777b7872767c7e0001000034020e000c00008007000000010205060504040708060403050709080705040401fffdfbfdfdfcfaf8f7f7f7f7f5f5f5f5f4f6f6f5f4f6fbff00fffcfaf9f7f7f5f6f6f9fcfdfefefefdfcfdfdfdfd000202020303020103050609090c0e100f0a0909080501ffff00020303020201ff0000fffefcfcfbfbfdff0000f0f4f5f5f7f9fbfaf5f3f3f6f5f6f7f7f6f6f7f8f9f9fbfafbfdfe00000101020306080a0a09080706040303030403050204050704fcf7f6f9fbfdff000306090a0909090b0d0e0e0e0d0c0d0e0c07070a0c090603020100fefbfafafcfcfdfcfcfbfaf9fafbff000201ff0003060403f1f3f2f3f4f3f0eff0f1f2f2f2f0f0f1f1eff0f2f6f8fcff04090c0d0c0f1013141617191c1d1e1c1a1b1c1e1c1c19141210100b07090f141614110f0f0d090401fffffdfefaf7f2f0edececebebeceff1f1efeef0f4f6f5f2eff1f4f5f6f6f5f5f5f5f5f4f5f7f6f4f2f4f4f7f9f9f9ebfafbfaf7f8f6f5f4f1f0f0f2f2f4f3f1eff0f4f7fbfd00030407070a0c1115151515171b1e1d1d1c1d2022201e1d1e20212324231e1a1c1d1b1b1a17120f0e0a080500fdfbfbf9f5f2f1f0f0f0f0efedeef0f1eeebeaeaeceff0efedebe9e9e9e9eae9e8ebeef1f2f4f3f3f2f3f7f9eff2f3f4f9fafcfbfbfaf7f6f6f8f9f8f7f7f9f9f8f7f6f5f6f6f9fafcfbfbfafafaf7f7f7f8f8fafafbfbff0000fdfbfafcfdfffefe0003050503010001050a101313110f0d09070400fefcfe000101fcf9f8f7f6f4f5f4f8fcff01020100fdf8f7f9fc000102fdfbfbfdff000407083c03000034020e000c00008007000000010205060504040708060403050709080705040401fffdfbfdfdfcfaf8f7f7f7f7f5f5f5f5f4f6f6f5f4f6fbff00fffcfaf9f7f7f5f6f6f9fcfdfefefefdfcfdfdfdfd000202020303020103050609090c0e100f0a0909080501ffff00020303020201ff0000fffefcfcfbfbfdff0000f0f4f5f5f7f9fbfaf5f3f3f6f5f6f7f7f6f6f7f8f9f9fbfafbfdfe00000101020306080a0a09080706040303030403050204050704fcf7f6f9fbfdff000306090a0909090b0d0e0e0e0d0c0d0e0c07070a0c090603020100fefbfafafcfcfdfcfcfbfaf9fafbff000201ff0003060403f1f3f2f3f4f3f0eff0f1f2f2f2f0f0f1f1eff0f2f6f8fcff04090c0d0c0f1013141617191c1d1e1c1a1b1c1e1c1c19141210100b07090f141614110f0f0d090401fffffdfefaf7f2f0edececebebeceff1f1efeef0f4f6f5f2eff1f4f5f6f6f5f5f5f5f5f4f5f7f6f4f2f4f4f7f9f9f9ebfafbfaf7f8f6f5f4f1f0f0f2f2f4f3f1eff0f4f7fbfd00030407070a0c1115151515171b1e1d1d1c1d2022201e1d1e20212324231e1a1c1d1b1b1a17120f0e0a080500fdfbfbf9f5f2f1f0f0f0f0efedeef0f1eeebeaeaeceff0efedebe9e9e9e9eae9e8ebeef1f2f4f3f3f2f3f7f9eff2f3f4f9fafcfbfbfaf7f6f6f8f9f8f7f7f9f9f8f7f6f5f6f6f9fafcfbfbfafafaf7f7f7f8f8fafafbfbff0000fdfbfafcfdfffefe0003050503010001050a101313110f0d09070400fefcfe000101fcf9f8f7f6f4f5f4f8fcff01020100fdf8f7f9fc000102fdfbfbfdff000407087805000014000e000f00008005550007890312000587000781010026040fe3079405000014000e000f00008005550007890312000587000781010026040fe307b005000008000e00080000809901000000000000c005000008000e00080000809901000000000000d005000008000e0002000000000000005a009001e005000008000e0002000000000000005a009001f005000004000e00050000803a690200fc05000004000e00050000803a690200
-    ''')
+    #rsp=unhex('0000a80200000c0000000800000074000e0003000080070000007e7e7c767d7a737a807c7c7975847f85858184888786888a8a8a8c8d8b85878c8689878689898484837d8b8b8289898d8f8c90908f86858c8b8d90908b848f8694928a8e908d8e8d898d8d8c8e8f8d8c878986808a8a818686848187888c8e7e7e85888989857f8077777b7872767c7e8400000074000e0003000080070000007e7e7c767d7a737a807c7c7975847f85858184888786888a8a8a8c8d8b85878c8689878689898484837d8b8b8289898d8f8c90908f86858c8b8d90908b848f8694928a8e908d8e8d898d8d8c8e8f8d8c878986808a8a818686848187888c8e7e7e85888989857f8077777b7872767c7e0001000034020e000c00008007000000010205060504040708060403050709080705040401fffdfbfdfdfcfaf8f7f7f7f7f5f5f5f5f4f6f6f5f4f6fbff00fffcfaf9f7f7f5f6f6f9fcfdfefefefdfcfdfdfdfd000202020303020103050609090c0e100f0a0909080501ffff00020303020201ff0000fffefcfcfbfbfdff0000f0f4f5f5f7f9fbfaf5f3f3f6f5f6f7f7f6f6f7f8f9f9fbfafbfdfe00000101020306080a0a09080706040303030403050204050704fcf7f6f9fbfdff000306090a0909090b0d0e0e0e0d0c0d0e0c07070a0c090603020100fefbfafafcfcfdfcfcfbfaf9fafbff000201ff0003060403f1f3f2f3f4f3f0eff0f1f2f2f2f0f0f1f1eff0f2f6f8fcff04090c0d0c0f1013141617191c1d1e1c1a1b1c1e1c1c19141210100b07090f141614110f0f0d090401fffffdfefaf7f2f0edececebebeceff1f1efeef0f4f6f5f2eff1f4f5f6f6f5f5f5f5f5f4f5f7f6f4f2f4f4f7f9f9f9ebfafbfaf7f8f6f5f4f1f0f0f2f2f4f3f1eff0f4f7fbfd00030407070a0c1115151515171b1e1d1d1c1d2022201e1d1e20212324231e1a1c1d1b1b1a17120f0e0a080500fdfbfbf9f5f2f1f0f0f0f0efedeef0f1eeebeaeaeceff0efedebe9e9e9e9eae9e8ebeef1f2f4f3f3f2f3f7f9eff2f3f4f9fafcfbfbfaf7f6f6f8f9f8f7f7f9f9f8f7f6f5f6f6f9fafcfbfbfafafaf7f7f7f8f8fafafbfbff0000fdfbfafcfdfffefe0003050503010001050a101313110f0d09070400fefcfe000101fcf9f8f7f6f4f5f4f8fcff01020100fdf8f7f9fc000102fdfbfbfdff000407083c03000034020e000c00008007000000010205060504040708060403050709080705040401fffdfbfdfdfcfaf8f7f7f7f7f5f5f5f5f4f6f6f5f4f6fbff00fffcfaf9f7f7f5f6f6f9fcfdfefefefdfcfdfdfdfd000202020303020103050609090c0e100f0a0909080501ffff00020303020201ff0000fffefcfcfbfbfdff0000f0f4f5f5f7f9fbfaf5f3f3f6f5f6f7f7f6f6f7f8f9f9fbfafbfdfe00000101020306080a0a09080706040303030403050204050704fcf7f6f9fbfdff000306090a0909090b0d0e0e0e0d0c0d0e0c07070a0c090603020100fefbfafafcfcfdfcfcfbfaf9fafbff000201ff0003060403f1f3f2f3f4f3f0eff0f1f2f2f2f0f0f1f1eff0f2f6f8fcff04090c0d0c0f1013141617191c1d1e1c1a1b1c1e1c1c19141210100b07090f141614110f0f0d090401fffffdfefaf7f2f0edececebebeceff1f1efeef0f4f6f5f2eff1f4f5f6f6f5f5f5f5f5f4f5f7f6f4f2f4f4f7f9f9f9ebfafbfaf7f8f6f5f4f1f0f0f2f2f4f3f1eff0f4f7fbfd00030407070a0c1115151515171b1e1d1d1c1d2022201e1d1e20212324231e1a1c1d1b1b1a17120f0e0a080500fdfbfbf9f5f2f1f0f0f0f0efedeef0f1eeebeaeaeceff0efedebe9e9e9e9eae9e8ebeef1f2f4f3f3f2f3f7f9eff2f3f4f9fafcfbfbfaf7f6f6f8f9f8f7f7f9f9f8f7f6f5f6f6f9fafcfbfbfafafaf7f7f7f8f8fafafbfbff0000fdfbfafcfdfffefe0003050503010001050a101313110f0d09070400fefcfe000101fcf9f8f7f6f4f5f4f8fcff01020100fdf8f7f9fc000102fdfbfbfdff000407087805000014000e000f00008005550007890312000587000781010026040fe3079405000014000e000f00008005550007890312000587000781010026040fe307b005000008000e00080000809901000000000000c005000008000e00080000809901000000000000d005000008000e0002000000000000005a009001e005000008000e0002000000000000005a009001f005000004000e00050000803a690200fc05000004000e00050000803a690200')
 
     assert_status(rsp)
     rsp=rsp[2:]
@@ -440,22 +198,33 @@ class CaptureMode(Enum):
 class Sensor():
     calib_data=b''
 
-    def open(self):
+    def open(self, load_calib_data=True):
         self.device_info = identify_sensor()
 
         print('Opening sensor: %s' % self.device_info.name)
         self.type_info = SensorTypeInfo.get_by_type(self.device_info.type)
         
-        if self.device_info.type == 0x199:
+        if self.device_info.type == 0x199 or self.device_info.type == 0xdb:
             self.lines_per_frame = 0xe0 # valid for 0x199, TODO: figure out where this number is coming from
             self.bytes_per_line = 0x78
             self.key_calibration_line = 0x38 # (lines_per_calibration_data/2), but hardcoded for sensor type 0x199
         else:
-            raise Exception('Device %s is not supported', self.device_info.name)
+            raise Exception('Device %s is not supported (sensor type 0x%x)' % (self.device_info.name, self.device_info.type))
 
         factory_bits = get_factory_bits(0x0e00)
         self.factory_calibration_values = factory_bits[3][4:]
 
+        if load_calib_data and isfile(calib_data_path):
+            with open(calib_data_path, 'rb') as f:
+                self.calib_data = f.read()
+                print('Calibration data loaded from a file.')
+        else:
+            self.calib_data = b''
+            print('Warning: no calibration data was loaded. Consider calibrating the sensor.')
+
+    def save(self):
+        with open(calib_data_path, 'wb') as f:
+            f.write(self.calib_data)
 
     # This is the exact logic from the DLL. 
     # If it looks broken that was probably intended.
@@ -529,7 +298,7 @@ class Sensor():
 
         return bytes(b)
 
-    def process_calibration_results(self, raw_calib_data):
+    def average(self, raw_calib_data):
         frame_size = self.lines_per_frame * self.bytes_per_line
         interleave_lines = self.lines_per_frame // self.type_info.lines_per_calibration_data # 2, TODO: algo is quite different when it is 1
         input_frames = 3 # len(raw_calib_data)//lines_per_frame//bytes_per_line, TODO: workout where it's really comming from
@@ -547,7 +316,12 @@ class Sensor():
         
         # calculate averages across interleaved lines
         frame=[bytes([sum(i)//len(f) for i in zip(*f)]) for f in frame]
-        
+
+        return b''.join(frame)
+
+    def process_calibration_results(self, cooked_data):
+        frame=chunks(cooked_data, self.bytes_per_line)
+
         # apply scaling factors
         frame=[f[:8] + bytes(map(scale, f[8:])) for f in frame]
         frame=b''.join(frame)
@@ -671,4 +445,279 @@ class Sensor():
 
         return pack('<BHH', 2, self.bytes_per_line, req_lines) + prg.merge_chunks(chunks)
 
+    def persist_clean_slate(self, clean_slate):
+        start = read_flash(6, 0, 0x44)
+
+        if start != b'\xff' * 0x44:
+            if clean_slate[:0x44] == start:
+                print('Calibration data already matches the data on the flash.')
+                return
+            else:
+                print('Calibration flash already written. Erasing.')
+                erase_flash(6)
+
+        write_flash_all(6, 0, clean_slate)
+
+    def calibrate(self):
+        for i in range(0, 3):
+            print('Calibration iteration %d...' % i)
+            rsp = tls.cmd(self.build_cmd_02(CaptureMode.CALIBRATE))
+            assert_status(rsp)
+            self.process_calibration_results(self.average(usb.read_82()))
+
+        print('Requesting a blank image...')
+
+        # Get the "clean slate" image to store on the flash for fine-grained after-capture adjustments
+        rsp = tls.cmd(self.build_cmd_02(CaptureMode.CALIBRATE))
+        assert_status(rsp)
+
+        clean_slate = self.average(usb.read_82())
+        clean_slate = pack('<H', len(clean_slate)) + clean_slate
+        clean_slate = clean_slate + pack('<H', 0) # TODO: still don't know what this zero is for
+        clean_slate = pack('<H', len(clean_slate)) + sha256(clean_slate).digest() + b'\0'*0x20 + clean_slate
+        clean_slate = unhexlify('0250') + clean_slate
+
+        self.persist_clean_slate(clean_slate)
+        self.save()
+
 sensor = Sensor()
+
+def capture(mode):
+    usb.purge_int_queue()
+
+    assert_status(tls.app(sensor.build_cmd_02(mode)))
+
+    b=usb.wait_int()
+    if b[0] != 0:
+        raise Exception('Unexpected interrupt type %s' % hexlify(b).decode())
+
+    try:
+        wait_for_finger()
+        #wait_till_finished()
+    
+        while True:
+            b=usb.wait_int()
+            if b[0] != 3:
+                raise Exception('Unexpected interrupt type %s' % hexlify(b).decode())
+
+            if b[2] & 4:
+                break
+    finally:
+        res=stop_prg()
+
+    assert_status(res)
+    res = res[2:]
+    
+    l, res = res[:4], res[4:]
+    l, = unpack('<L', l)
+
+    if l != len(res):
+        raise Exception('Response size does not match %d != %d', l, len(res))
+
+    x, y, w1, w2, error = unpack('<HHHHL', res)
+
+    return error
+
+def enrollment_update_start(key=0):
+    rsp=tls.app(pack('<BLL', 0x68, key, 0))
+    assert_status(rsp)
+    new_key, = unpack('<L', rsp[2:])
+
+    usb.wait_int()
+
+    return new_key
+
+def enrollment_update_end():
+    assert_status(tls.app(pack('<BL', 0x69, 0)))
+
+def enrollment_update(prev):
+    write_enable()
+    rsp=tls.app(b'\x6b' + prev)
+    assert_status(rsp)
+    flush_changes()
+
+    return rsp[2:]
+
+def append_new_image(key=0, prev=b''):
+    enrollment_update(prev)
+    
+    usb.wait_int()
+
+    res = enrollment_update(prev)
+
+    l, res = res[:2], res[2:]
+    l, = unpack('<H', l)
+    if l != len(res):
+        raise Exception('Response size does not match %d != %d', l, len(res))
+
+    magic_len = 0x38 # hardcoded in the DLL
+    template = header = tid = None
+
+    while len(res) > 0:
+        tag, l = unpack('<HH', res[:4])
+
+        if tag == 0:
+            template = res[:magic_len+l]
+        elif tag == 1:
+            header = res[magic_len:magic_len+l]
+        elif tag == 3:
+            tid = res[magic_len:magic_len+l]
+        else:
+            print('Ignoring unknown tag %x' % tag)
+            
+        res=res[magic_len+l:]
+
+    return (header, template, tid)
+
+def make_finger_data(subtype, template, tid):
+    template = pack('<HH', 1, len(template)) + template
+    tid = pack('<HH', 2, len(tid)) + tid
+
+    tinfo = template + tid
+
+    tinfo = pack('<HHHH', subtype, 3, len(tinfo), 0x20) + tinfo
+    tinfo += b'\0' * 0x20
+
+    return tinfo
+
+def enroll(identity, subtype):
+    key=0
+    template=b''
+
+    print('Waiting for a finger...')
+
+    while True:
+        glow_start_scan()
+
+        try:
+            err = capture(CaptureMode.ENROLL)
+            if err != 0:
+                print('Error %08x, try again' % err)
+                continue
+        except Exception as e:
+            print('Capture failed (%s), try again' % repr(e))
+            sleep(1)
+            continue
+        
+        key = enrollment_update_start(key)
+        header, template, tid = append_new_image(key, template)
+        enrollment_update_end()
+
+        print(hexlify(header))
+
+        if tid:
+            break
+
+    # TODO check for duplicates
+
+    tinfo = make_finger_data(subtype, template, tid)
+
+    usr=db.lookup_user(identity)
+    if usr == None:
+        usr = db.new_user(identity)
+    else:
+        usr = usr.dbid
+    
+    recid = db.new_finger(usr, tinfo)
+
+    glow_end_enroll()
+
+    print('All done')
+
+    return recid
+
+def parse_dict(x):
+    rc={}
+
+    while len(x) > 0:
+        (t, l), x = unpack('<HH', x[:4]), x[4:]
+        rc[t], x = x[:l], x[l:]
+
+    return rc
+
+    
+def identify():
+    glow_start_scan()
+    try:
+        err = capture(CaptureMode.IDENTIFY)
+        if err != 0:
+            raise Exception('Capture failed: %08x' % err)
+
+        # which finger?
+        stg_id=0 # match against any storage
+        usr_id=0 # match against any user
+        cmd=pack('<BBBHHHHH', 0x5e, 2, 0xff, stg_id, usr_id, 1, 0,0)
+        rsp=tls.app(cmd)
+        assert_status(rsp)
+
+        b = usb.wait_int()
+        if b[0] != 3:
+            raise Exception('Identification failed: %s' % hexlify(b).decode())
+
+        rsp = tls.app(unhexlify('6000000000'))
+        assert_status(rsp)
+        rsp = rsp[2:]
+
+    finally:
+        # finish
+        assert_status(tls.app(unhexlify('6200000000')))
+
+    (l,), rsp = unpack('<H', rsp[:2]), rsp[2:]
+    if l != len(rsp):
+        raise Exception('Response size does not match')
+
+    rsp=parse_dict(rsp)
+
+
+    #for k in rsp:
+    #    print('%04x: %s (%d)' % (k, hexlify(rsp[k]).decode(), len(rsp[k])))
+    
+#on 0097
+#0001: 09000000 (4)
+#0003: f500 (2)
+#0004: 8dee792532d3432d41c872fd4d6d590fbc855ad449cf2753cd919eb9c94675c6 (32)
+#0005: 0000000000000000000000000000000000000000000000000000000000000000 (32)
+#0008: 0a00 (2) <-- finger record db id
+#0002: 010b0000 (4)
+#0006: 00000000000000000000000000000000000000000000000000000000000000000000000000000000 (40)
+
+#on 009a (no finger record db id)
+#0000 8a00
+# 0100 0400 05000000
+# 0300 0200 f500
+# 0400 2000 b147dd1eda8da322fb7a2a51d0eab6fe94bef46c05204fbefb1fd16360903791
+# 0500 2000 0000000000000000000000000000000000000000000000000000000000000000
+# 0200 0400 650a0000
+# 0600 2800 00000000000000000000000000000000000000000000000000000000000000000000000000000000
+
+    usrid, subtype, hsh = rsp[1], rsp[3], rsp[4]
+    usrid, = unpack('<L', usrid)
+    subtype, = unpack('<H', subtype)
+
+    usr = db.get_user(usrid)
+    fingerids = [f['dbid'] for f in usr.fingers if f['subtype'] == subtype]
+    if len(fingerids) != 1:
+        raise Exception('Unexpected matching finger count')
+    finger_record = db.get_record_children(fingerids[0])
+
+    # Device won't let you add more than one data blob
+    if len(finger_record.children) > 1:
+        raise Exception('Expected only one child record for finger')
+
+    print('Recognised finger %02x (%s) from user %s' % (subtype, subtype_to_string(subtype), repr(usr.identity)))
+    print('Template hash: %s' % hexlify(hsh).decode())
+
+    if len(finger_record.children) > 0:
+        if finger_record.children[0]['type'] != 8:
+            raise Exception('Expected data blob as a finger child')
+        
+        blob_id = finger_record.children[0]['dbid']
+        blob = db.get_record_value(blob_id).value
+
+        tag, sz = unpack('<HH', blob[:4])
+        val = blob[4:4+sz]
+
+        print('Data blob associated with the finger: %04x: %s' % (tag, hexlify(val).decode()))
+        
+    return rsp
+

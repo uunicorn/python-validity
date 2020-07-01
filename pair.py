@@ -6,8 +6,8 @@ from proto9x.tls import tls
 from proto9x.flash import read_flash
 from proto9x.init_flash import init_flash
 from proto9x.upload_fwext import upload_fwext
-from proto9x.calibrate import calibrate
 from proto9x.init_db import init_db
+from proto9x.sensor import sensor
 
 #usb.trace_enabled=True
 #tls.trace_enabled=True
@@ -31,7 +31,8 @@ upload_fwext()
 
 restart()
 print('Calibrating...')
-calibrate()
+sensor.open(False)
+sensor.calibrate()
 
 print('Init database...')
 init_db()
