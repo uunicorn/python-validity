@@ -12,6 +12,8 @@ import pwd
 
 print("Starting up")
 
+default_username='root'
+
 loop = GLib.MainLoop()
 
 usb.quit = lambda e: loop.quit()
@@ -21,7 +23,7 @@ def uname2identity(uname):
         # For some reason Gnome enrollment UI does not send the user name
         # (it also ignores our num-enroll-stages attribute). I probably should upgrade Gnome
         print('No username specified. ')
-        uname = 'unicorn'
+        uname = default_username
     pw=pwd.getpwnam(uname)
     sidstr='S-1-5-21-111111111-1111111111-1111111111-%d' % pw.pw_uid
     return sid_from_string(sidstr)
@@ -39,10 +41,12 @@ class Device():
 
     def Claim(self, usr):
         print('In Claim %s' % usr)
+        self.claim_user = usr
 
     def Release(self):
         print('In Release')
         self.caimed = False
+        self.claim_user = None
         
     def ListEnrolledFingers(self, usr):
         try:
@@ -95,11 +99,13 @@ class Device():
 
         db.del_record(usr.dbid)
 
-    def do_enroll(self, finger_name):
+    def do_enroll(self, finger_name, user):
         # it is pointless to try and remember username passed in claim as Gnome does not seem to be passing anything useful anyway
         try:
-            # hardcode the username and finger for now
-            z=enroll(uname2identity('unicorn'), 0xf5)
+            if not user:
+                print('Warning: Username was not passed, using a hardcoded username "%s"' % user)
+            # TODO Convert fingername to WINBIO finger id e.g 0xf5
+            z=enroll(uname2identity(user), 0xf5)
             print('Enroll was successfull')
             self.EnrollStatus('enroll-completed', True)
         except Exception as e:
@@ -109,7 +115,7 @@ class Device():
 
     def EnrollStart(self, finger_name):
         print('In EnrollStart %s' % finger_name)
-        Thread(target=lambda: self.do_enroll(finger_name)).start()
+        Thread(target=lambda: self.do_enroll(finger_name, self.claim_user)).start()
         
 
     def EnrollStop(self):
