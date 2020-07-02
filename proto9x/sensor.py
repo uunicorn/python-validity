@@ -1,6 +1,7 @@
 
 from enum import Enum
-
+from hashlib import sha256
+import os.path
 from .tls import tls
 from .usb import usb
 from .db import db, subtype_to_string
@@ -219,7 +220,7 @@ class Sensor():
         factory_bits = get_factory_bits(0x0e00)
         self.factory_calibration_values = factory_bits[3][4:]
 
-        if load_calib_data and isfile(calib_data_path):
+        if load_calib_data and os.path.isfile(calib_data_path):
             with open(calib_data_path, 'rb') as f:
                 self.calib_data = f.read()
                 print('Calibration data loaded from a file.')
