@@ -16,14 +16,10 @@ loop = GLib.MainLoop()
 
 usb.quit = lambda e: loop.quit()
 
-def uname2identity(uname):
-    if uname == '':
-        # For some reason Gnome enrollment UI does not send the user name
-        # (it also ignores our num-enroll-stages attribute). I probably should upgrade Gnome
-        print('No username specified. ')
-        uname = 'unicorn'
-    pw=pwd.getpwnam(uname)
-    sidstr='S-1-5-21-111111111-1111111111-1111111111-%d' % pw.pw_uid
+bus = SystemBus()
+
+def uid2identity(uid):
+    sidstr='S-1-5-21-111111111-1111111111-1111111111-%d' % uid
     return sid_from_string(sidstr)
 
 class AlreadyInUse(Exception):
@@ -44,11 +40,18 @@ class Device():
         print('In Release')
         self.caimed = False
         
-    def ListEnrolledFingers(self, usr):
+    def ListEnrolledFingers(self, usr, dbus_context):
         try:
             print('In ListEnrolledFingers %s' % usr)
 
-            usr=db.lookup_user(uname2identity(usr))
+            if len(usr) > 0:
+                pw=pwd.getpwnam(usr)
+                uid=pw.pw_uid
+            else:
+                sender=dbus_context.sender
+                uid=bus.dbus.GetConnectionUnixUser(dbus_context.sender)
+
+            usr=db.lookup_user(uid2identity(uid))
 
             if usr == None:
                 print('User not found on this device')
@@ -83,11 +86,13 @@ class Device():
 
     def VerifyStop(self):
         print('In VerifyStop')
-        cancel_capture()
+        if self.capturing:
+            cancel_capture()
 
     def DeleteEnrolledFingers(self, user):
         print('In DeleteEnrolledFingers %s' % user)
-        usr=db.lookup_user(uname2identity(user))
+        pw=pwd.getpwnam(user)
+        usr=db.lookup_user(uid2identity(pw.pw_uid))
 
         if usr == None:
             print('User not found on this device')
@@ -95,11 +100,11 @@ class Device():
 
         db.del_record(usr.dbid)
 
-    def do_enroll(self, finger_name):
+    def do_enroll(self, finger_name, uid):
         # it is pointless to try and remember username passed in claim as Gnome does not seem to be passing anything useful anyway
         try:
-            # hardcode the username and finger for now
-            z=enroll(uname2identity('unicorn'), 0xf5)
+            # TODO hardcode the username and finger for now
+            z=enroll(uid2identity(uid), 0xf5)
             print('Enroll was successfull')
             self.EnrollStatus('enroll-completed', True)
         except Exception as e:
@@ -107,10 +112,11 @@ class Device():
             #loop.quit();
             raise e
 
-    def EnrollStart(self, finger_name):
-        print('In EnrollStart %s' % finger_name)
-        Thread(target=lambda: self.do_enroll(finger_name)).start()
-        
+    def EnrollStart(self, finger_name, dbus_context):
+        sender=dbus_context.sender
+        uid=bus.dbus.GetConnectionUnixUser(dbus_context.sender)
+        print('In EnrollStart %s for %d' % (finger_name, uid))
+        Thread(target=lambda: self.do_enroll(finger_name, uid)).start()
 
     def EnrollStop(self):
         print('In EnrollStop')
@@ -146,7 +152,6 @@ Device.dbus=[readif('net.reactivated.Fprint.Device.xml')]
 Manager.dbus=[readif('net.reactivated.Fprint.Manager.xml')]
 
 
-bus = SystemBus()
 bus.publish('net.reactivated.Fprint', 
         ('/net/reactivated/Fprint/Manager', Manager()), 
         ('/net/reactivated/Fprint/Device/0', Device())
