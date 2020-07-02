@@ -23,7 +23,7 @@ class Usb():
         except:
             pass
 
-    def open(self, vendor=0x138a, product=0x0097):
+    def open(self, vendor=0x06cb, product=0x009a):
         self.dev = ucore.find(idVendor=vendor, idProduct=product)
         self.dev.default_timeout = 15000
         self.thread = Thread(target=lambda: self.int_thread())
