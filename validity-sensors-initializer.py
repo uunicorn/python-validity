@@ -3,7 +3,7 @@
 #
 # 2020 - Marco Trevisan
 #
-# Initializer for ThinkPad's validity sensors 0090 and 0097
+# Initializer for ThinkPad's validity sensors 138a:0090 and 138a:0097 and 06cb:009a
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,22 +25,24 @@ import sys
 import tempfile
 import urllib.request
 
+
 from enum import Enum, auto
 from time import sleep
 from usb import core as usb_core
 
-from proto9x.calibrate import calibrate
 from proto9x.flash import read_flash
 from proto9x.init_db import init_db
 from proto9x.init_flash import init_flash
+from proto9x.sensor import sensor as vfs_sensor
 from proto9x.sensor import factory_reset
 from proto9x.tls import tls as vfs_tls
 from proto9x.upload_fwext import upload_fwext
 from proto9x.usb import usb as vfs_usb
 
 class VFS(Enum):
-    DEV_90 = 0x0090
-    DEV_97 = 0x0097
+    DEV_90 = (0x138a, 0x0090)
+    DEV_97 = (0x138a, 0x0097)
+    DEV_9a = (0x06cb, 0x009a)
 
 DEFAULT_URIS = {
     VFS.DEV_90: {
@@ -50,12 +52,17 @@ DEFAULT_URIS = {
     VFS.DEV_97: {
         'driver': 'https://download.lenovo.com/pccbbs/mobiles/n1mgf03w.exe',
         'referral': 'https://download.lenovo.com/pccbbs/mobiles/n1mgf03w.exe'
+    },
+    VFS.DEV_9a: {
+        'driver': 'https://download.lenovo.com/pccbbs/mobiles/nz3gf07w.exe',
+        'referral': 'https://download.lenovo.com/pccbbs/mobiles/nz3gf07w.exe'
     }
 }
 
 DEFAULT_FW_NAMES = {
     VFS.DEV_90: '6_07f_Lenovo.xpfwext',
     VFS.DEV_97: '6_07f_lenovo_mis.xpfwext',
+    VFS.DEV_9a: '6_07f_lenovo_mis_qm.xpfwext'
 }
 
 
@@ -90,8 +97,8 @@ class VFSInitializer():
             serial_number=self.product_serial)
 
     def open_device(self, init=False):
-        print('Opening device',hex(self.dev_type.value))
-        vfs_usb.open(product=self.dev_type.value)
+        print('Opening device',hex(self.dev_type.value[1]))
+        vfs_usb.open(product=self.dev_type.value[1])
 
         if init:
             vfs_usb.send_init()
@@ -185,12 +192,13 @@ class VFSInitializer():
             calib_data_file = 'calib-data.bin'
 
         print('Calibrating, re-using {}, if any...'.format(calib_data_file))
+        vfs_sensor.open()
         if os.path.exists(calib_data_file):
-            calibrate(calib_data_path=calib_data_file)
+            vfs_sensor.calibrate()
         else:
             try:
                 calib_data_file = os.path.join(tempfile.mkdtemp(), 'calib-data.bin')
-                calibrate(calib_data_path=calib_data_file)
+                vfs_sensor.calibrate()
                 print('Calibration data saved at {}'.format(calib_data_file))
             except Exception as e:
                 print('Calibration failed using device data ({}), ' \
@@ -224,7 +232,7 @@ if __name__ == "__main__":
 
     usb_dev = None
     for d in VFS:
-        dev = usb_core.find(idVendor=0x138a, idProduct=d.value)
+        dev = usb_core.find(idVendor=d.value[0], idProduct=d.value[1])
         if dev:
             dev_type = d
             usb_dev = dev
