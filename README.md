@@ -20,6 +20,7 @@ binary firmware and initializing them.
 This tool currently only supports these sensors:
 - 138a:0090 Validity Sensors, Inc. VFS7500 Touch Fingerprint Sensor
 - 138a:0097 Validity Sensors, Inc.
+- 06cb:009a Synaptics, Inc.
 Which are present in various ThinkPad and HP laptops.
 
 These devices communicate with the laptop via an encrypted protocol and they
@@ -45,12 +46,13 @@ it in libfprint using the driver at
 
 ### Getting the firmware
 
-It's possible to just extract [official Lenovo device driver for vfs0097](https://support.lenovo.com/us/en/downloads/DS121407) or [driver for vfs0090](https://support.lenovo.com/us/en/downloads/DS120491) (also [part of the SCCM package](https://support.lenovo.com/ec/th/downloads/DS112113) using [innoextract](https://constexpr.org/innoextract/) (available for all the distros), or `wine`.
+It's possible to just extract [official Lenovo device driver for vfs0097](https://support.lenovo.com/us/en/downloads/DS121407) or [device driver for 009a](https://pcsupport.lenovo.com/us/en/products/laptops-and-netbooks/thinkpad-t-series-laptops/thinkpad-t580-type-20l9-20la/downloads/driver-list/component?name=Fingerprint%20Reader) or [driver for vfs0090](https://support.lenovo.com/us/en/downloads/DS120491) (also [part of the SCCM package](https://support.lenovo.com/ec/th/downloads/DS112113) using [innoextract](https://constexpr.org/innoextract/) (available for all the distros), or `wine`.
 
 The only reason you need to do this is to find `6_07f_lenovo_mis.xpfwext` (for vfs0097) or `6_07f_Lenovo.xpfwext` (for vfs0090) and copy it to this project location.
 
       innoextract n1mgf03w.exe -e -I 6_07f_lenovo_mis.xpfwext # vfs0097
       innoextract n1cgn08w.exe -e -I 6_07f_Lenovo.xpfwext # vfs0090
+      innoextract nz3gf07w.exe -e -I 6_07f_lenovo_mis_qm.xpfwext # 009a
 
 ### Factory reset
 If your device was previously paired with another OS or computer, you need to do a factory reset.
@@ -63,6 +65,7 @@ $
 ### Pairing
 After performing a factory reset you need to pair your device with a host computer.
 This must be done only once, before you can enroll/identify/verify fingers.
+If pairing returns "errorException: Failed: 0315", you need to run factory_reset.py (again) before re-trying.
 ```
 $ python3 pair.py
 Initializing flash...
