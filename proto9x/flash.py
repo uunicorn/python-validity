@@ -95,8 +95,8 @@ def flush_changes():
     assert_status(tls.cmd(b'\x1a'))
 
 def erase_flash(partition):
-    tls.cmd(db_write_enable)
-    tls.cmd(pack('<BB', 0x3f, partition))
+    assert_status(tls.cmd(db_write_enable))
+    assert_status(tls.cmd(pack('<BB', 0x3f, partition)))
     flush_changes()
 
 def read_flash(partition, addr, size):
