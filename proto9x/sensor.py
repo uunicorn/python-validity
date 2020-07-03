@@ -19,6 +19,8 @@ calib_data_path='calib-data.bin'
 
 debug=False
 
+line_update_type1_devices = [ 0xB5, 0x885, 0xB3, 0x143B, 0x1055, 0xE1, 0x8B1, 0xEA, 0xE4, 0xED, 0x1825, 0x1FF5, 0x199 ]
+
 def glow_start_scan():
     cmd=unhexlify('3920bf0200ffff0000019900200000000099990000000000000000000000000020000000000000000000000000ffff000000990020000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000')
     assert_status(tls.app(cmd))
@@ -255,13 +257,15 @@ class Sensor():
         factory_bits = get_factory_bits(0x0e00)
         self.factory_calibration_values = factory_bits[3][4:]
 
+        if 7 in factory_bits:
+            self.factory_calib_data = factory_bits[7][4:]
+
         if load_calib_data and os.path.isfile(calib_data_path):
             with open(calib_data_path, 'rb') as f:
                 self.calib_data = f.read()
                 print('Calibration data loaded from a file.')
         else:
-            self.calib_data = factory_bits[7][4:]
-            #self.calib_data = b''
+            self.calib_data = b''
             print('Warning: no calibration data was loaded. Consider calibrating the sensor.')
 
     def save(self):
@@ -539,7 +543,7 @@ class Sensor():
         # Find 1st "Write Register" instruction to the 0x8000203C port
         pc, _ = prg.find_nth_regwrite(tst, 0x800020fc, 1) 
         l.flags = (pc + 1) | 0x3000000
-        l.data = self.calib_data
+        l.data = self.factory_calib_data
 
         l=Line()
         lines += [l]
@@ -567,8 +571,6 @@ class Sensor():
 
     def build_cmd_02(self, mode):
         chunks=list(prg.split_chunks(self.hardcoded_prog))
-
-        line_update_type1_devices = [ 0xB5, 0x885, 0xB3, 0x143B, 0x1055, 0xE1, 0x8B1, 0xEA, 0xE4, 0xED, 0x1825, 0x1FF5, 0x199 ]
 
         if self.rom_info.product != 0x30:
             raise Exception('Not implemented')
