@@ -6,8 +6,7 @@ from proto9x.flash import read_flash
 from proto9x.sensor import *
 from proto9x.sid import *
 
-def open97():
-    usb.open()
+def open_common():
     usb.send_init()
 
     # try to init TLS session from the flash
@@ -18,6 +17,14 @@ def open97():
     sensor.open()
     #usb.trace_enabled = True
     #tls.trace_enabled = True
+
+def open97():
+    usb.open(vendor=0x138a, product=0x0097)
+    open_common()
+
+def open9a():
+    usb.open(vendor=0x06cb, product=0x009a)
+    open_common()
 
 def load97():
     #usb.trace_enabled = True
