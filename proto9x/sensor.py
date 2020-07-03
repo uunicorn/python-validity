@@ -495,6 +495,8 @@ class Sensor():
         update_transform = b''.join([pack('<BBH', l.v0, l.v1, l.v2) + l.data for l in lines if ((l.flags & 0x00f00000) >> 0x14) > 1])
         chunks += [[0x43, update_transform]]
 
+        return chunks
+
     def line_update_type_2(self, mode, chunks):
         for c in chunks:
             # patch the 2D params. 
