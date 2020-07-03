@@ -5,10 +5,10 @@ import os.path
 from .tls import tls
 from .usb import usb
 from .db import db, subtype_to_string
-from .flash import write_enable, flush_changes, read_flash, write_flash_all
+from .flash import write_enable, flush_changes, read_flash, erase_flash, write_flash_all
 from time import sleep
 from struct import pack, unpack
-from .table_types import SensorTypeInfo
+from .table_types import SensorTypeInfo, SensorCaptureProg
 from binascii import hexlify, unhexlify
 from .util import assert_status, unhex
 from .hw_tables import dev_info_lookup
@@ -17,11 +17,7 @@ from . import timeslot as prg
 
 calib_data_path='calib-data.bin'
 
-# hardcoded bit of cmd02 program. valid only for 009a
-# TODO: properly extract all these bits from the DLL
-hardcoded=unhex('''
-23000000200008000020008000000100320074000000008020200400242000005020773628200100302001003c208000082138000c210000482107004c210000582000005c20000060200000682005006c20014970200141742001887820018084202000942001809c200902a0200b19b4200300b8203b04bc201400c0200200c4200100c82002003300100000000080cc200000f503d0200000a1013200440000000080dc20e803e0206401e420d002e8200001f0200500f8200500fc200000b8203a00000804001408000008080000080800001408300008080000140831001c081a0032000c0000000080501101004c111e00340078010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010221710221710221610221610221601065010250101000007c8078c06ff0000000000004f80006d0300280307030990098db00b90880991858e08c1810b9190910ac1b8928a0993878a890b9388898908c88191890ac8889289099a818a890b9a88898908d08191890ad08892890802818a095a810a0288890b5a8808d98189890ad9908989095e8289890b5e88898908e18189890ae190898909648289890b648889096e8108e981890b6e880ae99091b9096f828a8f0b6f88918908f0818a890af090898909768289910b76b8918a08f88792910af8888a92097c81898a0b7c09018089890b01888991097f8189920b7f09088089920b088889920c07030307200402000000002f0004007000000029000400700000003500040080000000'
-''')
+debug=False
 
 def glow_start_scan():
     cmd=unhexlify('3920bf0200ffff0000019900200000000099990000000000000000000000000020000000000000000000000000ffff000000990020000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000')
@@ -83,9 +79,34 @@ def factory_reset():
     assert_status(usb.cmd(b'\x10' + b'\0'*0x61))
     reboot()
 
+class RomInfo():
+    def get():
+        if not debug:
+            rsp=tls.cmd(b'\x01')
+        else:
+            # 0097
+            rsp=unhexlify('0000f0b05e54a40000000607013000010000090a089141a80023000000000100000000000007');
+
+        assert_status(rsp)
+        rsp=rsp[2:]
+        return RomInfo(*unpack('<LLBBxBxxxB', rsp[0:0x10]))
+
+    def __init__(self, timestamp, build, major, minor, product, u1):
+        self.timestamp, self.build, self.major, self.minor, self.product, self.u1 = timestamp, build, major, minor, product, u1
+
+    def __repr__(self):
+        return 'RomInfo(timestamp=%d, build=%d, major=%d, minor=%d, product=%d, u1=%d)' % (
+            self.timestamp, self.build, self.major, self.minor, self.product, self.u1)
+
+
 def identify_sensor():
-    rsp=tls.cmd(b'\x75')
-    #rsp=unhexlify('0000000000005a009001');
+    if not debug:
+        rsp=tls.cmd(b'\x75')
+    else:
+        # 009a
+        #rsp=unhexlify('0000000000005a009001');
+        # 0097
+        rsp=unhexlify('0000000000000d007100');
 
     assert_status(rsp)
     rsp=rsp[2:]
@@ -106,12 +127,14 @@ def identify_sensor():
 #      6c010000 1400 0e00 0f00 0080 05550007 7701002805720000080100020811e107
 #      88010000 0c00 0e00 1200 0080 07000000 7002 7800 7002 7800
 def get_factory_bits(tag):
-    rsp=tls.cmd(pack('<B H HL', 0x6f, tag, 0, 0))
-
-    # 6f 000e 00000000 response from the 009a logs:
-    #rsp=unhex('0000a80200000c0000000800000074000e0003000080070000007e7e7c767d7a737a807c7c7975847f85858184888786888a8a8a8c8d8b85878c8689878689898484837d8b8b8289898d8f8c90908f86858c8b8d90908b848f8694928a8e908d8e8d898d8d8c8e8f8d8c878986808a8a818686848187888c8e7e7e85888989857f8077777b7872767c7e8400000074000e0003000080070000007e7e7c767d7a737a807c7c7975847f85858184888786888a8a8a8c8d8b85878c8689878689898484837d8b8b8289898d8f8c90908f86858c8b8d90908b848f8694928a8e908d8e8d898d8d8c8e8f8d8c878986808a8a818686848187888c8e7e7e85888989857f8077777b7872767c7e0001000034020e000c00008007000000010205060504040708060403050709080705040401fffdfbfdfdfcfaf8f7f7f7f7f5f5f5f5f4f6f6f5f4f6fbff00fffcfaf9f7f7f5f6f6f9fcfdfefefefdfcfdfdfdfd000202020303020103050609090c0e100f0a0909080501ffff00020303020201ff0000fffefcfcfbfbfdff0000f0f4f5f5f7f9fbfaf5f3f3f6f5f6f7f7f6f6f7f8f9f9fbfafbfdfe00000101020306080a0a09080706040303030403050204050704fcf7f6f9fbfdff000306090a0909090b0d0e0e0e0d0c0d0e0c07070a0c090603020100fefbfafafcfcfdfcfcfbfaf9fafbff000201ff0003060403f1f3f2f3f4f3f0eff0f1f2f2f2f0f0f1f1eff0f2f6f8fcff04090c0d0c0f1013141617191c1d1e1c1a1b1c1e1c1c19141210100b07090f141614110f0f0d090401fffffdfefaf7f2f0edececebebeceff1f1efeef0f4f6f5f2eff1f4f5f6f6f5f5f5f5f5f4f5f7f6f4f2f4f4f7f9f9f9ebfafbfaf7f8f6f5f4f1f0f0f2f2f4f3f1eff0f4f7fbfd00030407070a0c1115151515171b1e1d1d1c1d2022201e1d1e20212324231e1a1c1d1b1b1a17120f0e0a080500fdfbfbf9f5f2f1f0f0f0f0efedeef0f1eeebeaeaeceff0efedebe9e9e9e9eae9e8ebeef1f2f4f3f3f2f3f7f9eff2f3f4f9fafcfbfbfaf7f6f6f8f9f8f7f7f9f9f8f7f6f5f6f6f9fafcfbfbfafafaf7f7f7f8f8fafafbfbff0000fdfbfafcfdfffefe0003050503010001050a101313110f0d09070400fefcfe000101fcf9f8f7f6f4f5f4f8fcff01020100fdf8f7f9fc000102fdfbfbfdff000407083c03000034020e000c00008007000000010205060504040708060403050709080705040401fffdfbfdfdfcfaf8f7f7f7f7f5f5f5f5f4f6f6f5f4f6fbff00fffcfaf9f7f7f5f6f6f9fcfdfefefefdfcfdfdfdfd000202020303020103050609090c0e100f0a0909080501ffff00020303020201ff0000fffefcfcfbfbfdff0000f0f4f5f5f7f9fbfaf5f3f3f6f5f6f7f7f6f6f7f8f9f9fbfafbfdfe00000101020306080a0a09080706040303030403050204050704fcf7f6f9fbfdff000306090a0909090b0d0e0e0e0d0c0d0e0c07070a0c090603020100fefbfafafcfcfdfcfcfbfaf9fafbff000201ff0003060403f1f3f2f3f4f3f0eff0f1f2f2f2f0f0f1f1eff0f2f6f8fcff04090c0d0c0f1013141617191c1d1e1c1a1b1c1e1c1c19141210100b07090f141614110f0f0d090401fffffdfefaf7f2f0edececebebeceff1f1efeef0f4f6f5f2eff1f4f5f6f6f5f5f5f5f5f4f5f7f6f4f2f4f4f7f9f9f9ebfafbfaf7f8f6f5f4f1f0f0f2f2f4f3f1eff0f4f7fbfd00030407070a0c1115151515171b1e1d1d1c1d2022201e1d1e20212324231e1a1c1d1b1b1a17120f0e0a080500fdfbfbf9f5f2f1f0f0f0f0efedeef0f1eeebeaeaeceff0efedebe9e9e9e9eae9e8ebeef1f2f4f3f3f2f3f7f9eff2f3f4f9fafcfbfbfaf7f6f6f8f9f8f7f7f9f9f8f7f6f5f6f6f9fafcfbfbfafafaf7f7f7f8f8fafafbfbff0000fdfbfafcfdfffefe0003050503010001050a101313110f0d09070400fefcfe000101fcf9f8f7f6f4f5f4f8fcff01020100fdf8f7f9fc000102fdfbfbfdff000407087805000014000e000f00008005550007890312000587000781010026040fe3079405000014000e000f00008005550007890312000587000781010026040fe307b005000008000e00080000809901000000000000c005000008000e00080000809901000000000000d005000008000e0002000000000000005a009001e005000008000e0002000000000000005a009001f005000004000e00050000803a690200fc05000004000e00050000803a690200')
-    # another example, which will require alignment adjustments
-    #rsp=unhex('0000080c0000070000000800000074000e0003000080070000007f7f7e787f7c747b827f7f7c768681888883868a8988898b8b8a8d8e8d86888c878a88868a8a8586847d8b8b8389898c8e8b8f908f86878d8b8d90908b868f8592918a8e908d8e8e8a8e8e8c8d8f8d8d888887828a8b818787848389898d8f7f80878a8a8a86818178797d7b74787e818400000008000e0002000000000000004a0090019400000008000e00080000809901000000000000a400000004000e0005000080337b0200b000000034020e000c00008007000000fd050809050202030404060809060200fefcfcff01010000ff00000301fdfbfdfdfd000101fcf9f9f9fcfe0001010000fcfcfafb00040d1215100b0703fffd000202fefcfefd0002080708080804030301030103010204070402fffdf8f8fbff0301020204050406070b090a0604fffeedf2f5f6f2f0f1f3f5f7fafcfffffefcfaf9f7f7f9fbfbfaf8f8f2f3f4fafcfdfdff00feff00fefbf8f8fc010506060706060403fdf8f7fa02050707060300fe0003070a090a0a0a0705050c0e100d080505070604020407080808060504070a0d0a09080b0b0a0a070400000200fffeeaf3f7f7f6f7f5f1eceaebeaeaeaeaeeeff1f3f4f3f3f4f8f9f9f6f9fe0204040706050508080a0809080b0c0f0f110d0f10151312120c0a040605090d0e0f0e1112100c0808070400fdfdff000200fcfbfe0202ff000407030100fefefcff0304060608090c0f0e100b080505080908ed02fffbf8f8f9f9fbfcfcf7f6f8fcfbf9f5f4f7f9f8f6f5f4f6fc03090c0b07030304080707080c0c0a0603020304050406050100ff0400fffbf9fbfd0000fdfaf8f9ff03000000080a09080702faf7f5f7f7f8f9f8fafafaf6f2f0f1f4f7f6f5f5f8f9fafb0000fff9f4f5f8fe0200f70000fefcfbfafc000204060708060603060807070607070302fefffe0305050305050600fcf8fcff0005080903030303030307070702fffe030807070508080a0c0f0d090707060601fdfbfafbfbfaf8f6f6f4f6f7fefefffdfefcfdfcfcfbfcfcfafaf9fd00000402030205070808ec02000014000e000f00008005550007770100310587000780010013000fe207080300000c000e0012000080070000003807540138075401')
+    if not debug:
+        rsp=tls.cmd(pack('<B H HL', 0x6f, tag, 0, 0))
+    else:
+        # 6f 000e 00000000 response from the 009a logs:
+        #rsp=unhex('0000a80200000c0000000800000074000e0003000080070000007e7e7c767d7a737a807c7c7975847f85858184888786888a8a8a8c8d8b85878c8689878689898484837d8b8b8289898d8f8c90908f86858c8b8d90908b848f8694928a8e908d8e8d898d8d8c8e8f8d8c878986808a8a818686848187888c8e7e7e85888989857f8077777b7872767c7e8400000074000e0003000080070000007e7e7c767d7a737a807c7c7975847f85858184888786888a8a8a8c8d8b85878c8689878689898484837d8b8b8289898d8f8c90908f86858c8b8d90908b848f8694928a8e908d8e8d898d8d8c8e8f8d8c878986808a8a818686848187888c8e7e7e85888989857f8077777b7872767c7e0001000034020e000c00008007000000010205060504040708060403050709080705040401fffdfbfdfdfcfaf8f7f7f7f7f5f5f5f5f4f6f6f5f4f6fbff00fffcfaf9f7f7f5f6f6f9fcfdfefefefdfcfdfdfdfd000202020303020103050609090c0e100f0a0909080501ffff00020303020201ff0000fffefcfcfbfbfdff0000f0f4f5f5f7f9fbfaf5f3f3f6f5f6f7f7f6f6f7f8f9f9fbfafbfdfe00000101020306080a0a09080706040303030403050204050704fcf7f6f9fbfdff000306090a0909090b0d0e0e0e0d0c0d0e0c07070a0c090603020100fefbfafafcfcfdfcfcfbfaf9fafbff000201ff0003060403f1f3f2f3f4f3f0eff0f1f2f2f2f0f0f1f1eff0f2f6f8fcff04090c0d0c0f1013141617191c1d1e1c1a1b1c1e1c1c19141210100b07090f141614110f0f0d090401fffffdfefaf7f2f0edececebebeceff1f1efeef0f4f6f5f2eff1f4f5f6f6f5f5f5f5f5f4f5f7f6f4f2f4f4f7f9f9f9ebfafbfaf7f8f6f5f4f1f0f0f2f2f4f3f1eff0f4f7fbfd00030407070a0c1115151515171b1e1d1d1c1d2022201e1d1e20212324231e1a1c1d1b1b1a17120f0e0a080500fdfbfbf9f5f2f1f0f0f0f0efedeef0f1eeebeaeaeceff0efedebe9e9e9e9eae9e8ebeef1f2f4f3f3f2f3f7f9eff2f3f4f9fafcfbfbfaf7f6f6f8f9f8f7f7f9f9f8f7f6f5f6f6f9fafcfbfbfafafaf7f7f7f8f8fafafbfbff0000fdfbfafcfdfffefe0003050503010001050a101313110f0d09070400fefcfe000101fcf9f8f7f6f4f5f4f8fcff01020100fdf8f7f9fc000102fdfbfbfdff000407083c03000034020e000c00008007000000010205060504040708060403050709080705040401fffdfbfdfdfcfaf8f7f7f7f7f5f5f5f5f4f6f6f5f4f6fbff00fffcfaf9f7f7f5f6f6f9fcfdfefefefdfcfdfdfdfd000202020303020103050609090c0e100f0a0909080501ffff00020303020201ff0000fffefcfcfbfbfdff0000f0f4f5f5f7f9fbfaf5f3f3f6f5f6f7f7f6f6f7f8f9f9fbfafbfdfe00000101020306080a0a09080706040303030403050204050704fcf7f6f9fbfdff000306090a0909090b0d0e0e0e0d0c0d0e0c07070a0c090603020100fefbfafafcfcfdfcfcfbfaf9fafbff000201ff0003060403f1f3f2f3f4f3f0eff0f1f2f2f2f0f0f1f1eff0f2f6f8fcff04090c0d0c0f1013141617191c1d1e1c1a1b1c1e1c1c19141210100b07090f141614110f0f0d090401fffffdfefaf7f2f0edececebebeceff1f1efeef0f4f6f5f2eff1f4f5f6f6f5f5f5f5f5f4f5f7f6f4f2f4f4f7f9f9f9ebfafbfaf7f8f6f5f4f1f0f0f2f2f4f3f1eff0f4f7fbfd00030407070a0c1115151515171b1e1d1d1c1d2022201e1d1e20212324231e1a1c1d1b1b1a17120f0e0a080500fdfbfbf9f5f2f1f0f0f0f0efedeef0f1eeebeaeaeceff0efedebe9e9e9e9eae9e8ebeef1f2f4f3f3f2f3f7f9eff2f3f4f9fafcfbfbfaf7f6f6f8f9f8f7f7f9f9f8f7f6f5f6f6f9fafcfbfbfafafaf7f7f7f8f8fafafbfbff0000fdfbfafcfdfffefe0003050503010001050a101313110f0d09070400fefcfe000101fcf9f8f7f6f4f5f4f8fcff01020100fdf8f7f9fc000102fdfbfbfdff000407087805000014000e000f00008005550007890312000587000781010026040fe3079405000014000e000f00008005550007890312000587000781010026040fe307b005000008000e00080000809901000000000000c005000008000e00080000809901000000000000d005000008000e0002000000000000005a009001e005000008000e0002000000000000005a009001f005000004000e00050000803a690200fc05000004000e00050000803a690200')
+        # another example, which will require alignment adjustments
+        #rsp=unhex('0000080c0000070000000800000074000e0003000080070000007f7f7e787f7c747b827f7f7c768681888883868a8988898b8b8a8d8e8d86888c878a88868a8a8586847d8b8b8389898c8e8b8f908f86878d8b8d90908b868f8592918a8e908d8e8e8a8e8e8c8d8f8d8d888887828a8b818787848389898d8f7f80878a8a8a86818178797d7b74787e818400000008000e0002000000000000004a0090019400000008000e00080000809901000000000000a400000004000e0005000080337b0200b000000034020e000c00008007000000fd050809050202030404060809060200fefcfcff01010000ff00000301fdfbfdfdfd000101fcf9f9f9fcfe0001010000fcfcfafb00040d1215100b0703fffd000202fefcfefd0002080708080804030301030103010204070402fffdf8f8fbff0301020204050406070b090a0604fffeedf2f5f6f2f0f1f3f5f7fafcfffffefcfaf9f7f7f9fbfbfaf8f8f2f3f4fafcfdfdff00feff00fefbf8f8fc010506060706060403fdf8f7fa02050707060300fe0003070a090a0a0a0705050c0e100d080505070604020407080808060504070a0d0a09080b0b0a0a070400000200fffeeaf3f7f7f6f7f5f1eceaebeaeaeaeaeeeff1f3f4f3f3f4f8f9f9f6f9fe0204040706050508080a0809080b0c0f0f110d0f10151312120c0a040605090d0e0f0e1112100c0808070400fdfdff000200fcfbfe0202ff000407030100fefefcff0304060608090c0f0e100b080505080908ed02fffbf8f8f9f9fbfcfcf7f6f8fcfbf9f5f4f7f9f8f6f5f4f6fc03090c0b07030304080707080c0c0a0603020304050406050100ff0400fffbf9fbfd0000fdfaf8f9ff03000000080a09080702faf7f5f7f7f8f9f8fafafaf6f2f0f1f4f7f6f5f5f8f9fafb0000fff9f4f5f8fe0200f70000fefcfbfafc000204060708060603060807070607070302fefffe0305050305050600fcf8fcff0005080903030303030307070702fffe030807070508080a0c0f0d090707060601fdfbfafbfbfaf8f6f6f4f6f7fefefffdfefcfdfcfcfbfcfcfafaf9fd00000402030205070808ec02000014000e000f00008005550007770100310587000780010013000fe207080300000c000e0012000080070000003807540138075401')
+        rsp=unhex('0000880d0000070000000800000094000e0003000080070000007e7f807f808080808080808080808080808080808080818081808180818080808080818081808080818081808180818081808180818081808180808081808180808081807f80808180808081808180818080808180818081808180818081808080818081808180818081808180818081808180818081808180818081808080808080808080807f807f807f807f7f7e7ea400000008000e0002000000000000000d007100b400000008000e0008000080db00000000000000c400000004000e00050000801c6f0400d000000094000e0007000080070000002b23203c2d182e1e30182e1c321d341d341e321c301e1e241e201f201d1c321a301e1c211e21341f1e202024201f1e20201f212221221d221e23341e1d1e1d20341f1d193b341c1d1e35201e201c20221f341c1e1e1c221f201d21201e1c1f34242221201f20221f201e241e241d2020221e2420231d221e211e1f1e1e341c321e3220301d2d302f2d2c2b23223a211c6c01000014000e000f000080055500077701002805720000080100020811e107880100000c000e0012000080070000007002780070027800')
 
     assert_status(rsp)
     rsp=rsp[2:]
@@ -209,11 +232,23 @@ class Sensor():
         
         if self.device_info.type == 0x199:
             self.key_calibration_line = 0x38 # (lines_per_calibration_data/2), but hardcoded for sensor type 0x199
+            self.calibration_frames = 3 # TODO: workout where it's really comming from
+            self.calibration_iterations = 3 # hardcoded for type
+        elif self.device_info.type == 0xdb:
+            self.key_calibration_line = 0x48 # TODO 48 is just a guess -- find it
+            self.calibration_frames = 6 # TODO: workout where it's really comming from
+            self.calibration_iterations = 0
         else:
             raise Exception('Device %s is not supported (sensor type 0x%x)' % (self.device_info.name, self.device_info.type))
 
+
+        self.rom_info = RomInfo.get()
+        self.hardcoded_prog = SensorCaptureProg.get(self.rom_info, self.device_info.type, 0x18, 0x19) # TODO: find where 0x18, 0x19 coming from
+        if self.hardcoded_prog is None:
+            raise Exception('Can\'t find initial capture program for rom %s and sensor type %x' % (repr(self.rom_info), self.device_info.type))
+
         # Look for a "2D" chunk. It must have a 32 bit integer which represent the number of lines per frame
-        lines_2d = [unpack('<L', v)[0] for [k, v] in prg.split_chunks(hardcoded) if k == 0x2f][0]
+        lines_2d = [unpack('<L', v)[0] for [k, v] in prg.split_chunks(self.hardcoded_prog) if k == 0x2f][0]
         self.lines_per_frame = lines_2d*self.type_info.repeat_multiplier
         self.bytes_per_line = self.type_info.bytes_per_line
 
@@ -225,7 +260,8 @@ class Sensor():
                 self.calib_data = f.read()
                 print('Calibration data loaded from a file.')
         else:
-            self.calib_data = b''
+            self.calib_data = factory_bits[7][4:]
+            #self.calib_data = b''
             print('Warning: no calibration data was loaded. Consider calibrating the sensor.')
 
     def save(self):
@@ -307,23 +343,37 @@ class Sensor():
     def average(self, raw_calib_data):
         frame_size = self.lines_per_frame * self.bytes_per_line
         interleave_lines = self.lines_per_frame // self.type_info.lines_per_calibration_data # 2, TODO: algo is quite different when it is 1
-        input_frames = 3 # len(raw_calib_data)//lines_per_frame//bytes_per_line, TODO: workout where it's really comming from
+        input_frames = self.calibration_frames
         
-        # skip the first frame
-        input_frames -= 1
-        base_address = frame_size
-        frame=raw_calib_data[base_address:base_address+frame_size]
+        if interleave_lines > 1:
+            if input_frames > 1:
+                # skip the first frame
+                input_frames -= 1
+                base_address = frame_size
 
-        # split into groups of lines
-        frame=chunks(frame, interleave_lines*self.bytes_per_line)
+            frame=raw_calib_data[base_address:base_address+frame_size]
 
-        # split group of lines into lines
-        frame=[chunks(f, self.bytes_per_line) for f in frame]
-        
-        # calculate averages across interleaved lines
-        frame=[bytes([sum(i)//len(f) for i in zip(*f)]) for f in frame]
+            # split into groups of lines
+            frame=chunks(frame, interleave_lines*self.bytes_per_line)
 
-        return b''.join(frame)
+            # split group of lines into lines
+            frame=[chunks(f, self.bytes_per_line) for f in frame]
+            
+            # calculate averages across interleaved lines
+            frame=[bytes([sum(i)//len(f) for i in zip(*f)]) for f in frame]
+            frame=b''.join(frame)
+        else:
+            if input_frames > 1:
+                # skip the first frame
+                input_frames -= 2
+                base_address = frame_size*2
+
+            frames=raw_calib_data[base_address:base_address+frame_size*input_frames]
+            frames=chunks(frames, frame_size)
+            frame=[int(sum(i)/input_frames) for i in zip(*frames)]
+            frame=bytes(frame)
+
+        return frame
 
     def process_calibration_results(self, cooked_data):
         frame=chunks(cooked_data, self.bytes_per_line)
@@ -357,15 +407,8 @@ class Sensor():
 
         return key_line
 
-    def build_cmd_02(self, mode):
-        chunks=list(prg.split_chunks(hardcoded))
-
+    def line_update_type_1(self, mode, chunks):
         for c in chunks:
-            # patch the 2D params. 
-            # The following is only needed on some hw versions below 6.5 as reported by cmd_01
-            #if c[0] == 0x2f:
-            #    c[1] = pack('<L', unpack('<L', c[1])[0]*mult)
-
             # Timeslot Table 2D
             if c[0] == 0x34:
                 # TODO: figure out when to use address increment
@@ -448,8 +491,95 @@ class Sensor():
         update_transform = b''.join([pack('<BBH', l.v0, l.v1, l.v2) + l.data for l in lines if ((l.flags & 0x00f00000) >> 0x14) > 1])
         chunks += [[0x43, update_transform]]
 
+    def line_update_type_2(self, mode, chunks):
+        for c in chunks:
+            # patch the 2D params. 
+            # The following is only needed on some rom versions below 6.5 as reported by cmd_01
+            #if c[0] == 0x2f:
+            #    c[1] = pack('<L', unpack('<L', c[1])[0]*mult)
+
+            # Timeslot Table 2D
+            if c[0] == 0x34:
+                # TODO: figure out when to use address increment
+                tst = self.patch_timeslot_table(c[1], True, self.type_info.repeat_multiplier)
+                if mode != CaptureMode.CALIBRATE:
+                    tst=self.patch_timeslot_again(tst)
+                c[1] = tst
+
+        #---------------- Reply Configuration ---------------
+        chunks += [[0x17, b'']]
+
+        if mode == CaptureMode.IDENTIFY:
+            # This type of fragment is not present in the debugging dump routine.
+            # It seems to be only used for identification and it looks almost identical to Finger Detect (0x26)
+            # Seems to be the same all the time for a given sensor and mostly hardcoded
+            # TODO: analyse construct_wtf_4e @0000000180090BF0
+            chunks += [[0x4e, unhexlify('fbb20f0000000f00300000006001020040010a00018000000a0200000b1900008813b80b01091000')]]
+            # Image Reconstruction.
+            # TODO: analyse add_image_reconstruction_cmd_02_buff_list_item @000000018008EA70
+            chunks += [[0x2e, unhexlify('0200180002000000900090004d01000090017c013c323232640a0201')]]
+        elif mode == CaptureMode.ENROLL:
+            chunks += [[0x26, unhexlify('fbb20f0000000f00300000006001020040010a00018000000a0200000b19000050c360ea01091000')]]
+            # Image Reconstruction. There is only one byte difference with the "identify" version. (same is true for 0097)
+            chunks += [[0x2e, unhexlify('0200180023000000900090004d01000090017c013c323232640a0201')]]
+
+        lines = []
+
+        l=Line()
+        lines += [l]
+        l.mask = 0xff
+        # Find 2nd "Enable Rx" instruction
+        pc, _ = prg.find_nth_insn(tst, 6, 2) 
+        l.flags = (pc + 1) | 0x3000000
+        l.data = self.type_info.calibration_blob
+
+        l=Line()
+        lines += [l]
+        l.mask = 0xff
+        # Find 1st "Write Register" instruction to the 0x8000203C port
+        pc, _ = prg.find_nth_regwrite(tst, 0x800020fc, 1) 
+        l.flags = (pc + 1) | 0x3000000
+        l.data = self.calib_data
+
+        l=Line()
+        lines += [l]
+        l.mask = 0xff
+        # Find 1st "Write Register" instruction to the 0x8000203C port
+        pc, _ = prg.find_nth_regwrite(tst, 0x8000203c, 1) 
+        l.flags = (pc + 1) | 0x3000000
+        l.data = self.factory_calibration_values
+
+        # Align to dwords, as the sensor demands it
+        for l in lines:
+            pad = len(l.data) % 4
+            if pad > 0:
+                l.data += b'\0' * (4 - pad)
+
+            
+        #---------------- Line Update ---------------
+        line_update = pack('<L', len(lines))
+        line_update += b''.join([pack('<LL', l.mask, l.flags) for l in lines])
+
+        line_update += b''.join([l.data for l in lines])
+        chunks += [[0x30, line_update]]
+
+        return chunks
+
+    def build_cmd_02(self, mode):
+        chunks=list(prg.split_chunks(self.hardcoded_prog))
+
+        line_update_type1_devices = [ 0xB5, 0x885, 0xB3, 0x143B, 0x1055, 0xE1, 0x8B1, 0xEA, 0xE4, 0xED, 0x1825, 0x1FF5, 0x199 ]
+
+        if self.rom_info.product != 0x30:
+            raise Exception('Not implemented')
+
+        if self.device_info.type in line_update_type1_devices:
+            chunks=self.line_update_type_1(mode, chunks)
+        else:
+            chunks=self.line_update_type_2(mode, chunks)
+
         if mode == CaptureMode.CALIBRATE:
-            req_lines = 3*self.lines_per_frame+1 # TODO: figure out how this is actually calculated
+            req_lines = self.calibration_frames*self.lines_per_frame+1 # TODO: figure out how this is actually calculated
         else:
             req_lines = 0
 
@@ -469,7 +599,7 @@ class Sensor():
         write_flash_all(6, 0, clean_slate)
 
     def calibrate(self):
-        for i in range(0, 3):
+        for i in range(0, self.calibration_iterations):
             print('Calibration iteration %d...' % i)
             rsp = tls.cmd(self.build_cmd_02(CaptureMode.CALIBRATE))
             assert_status(rsp)
