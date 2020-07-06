@@ -4,27 +4,36 @@ from binascii import *
 from .util import assert_status, unhex
 from struct import unpack
 from usb.util import claim_interface, release_interface
-from queue import Queue
 from threading import Thread
 from usb.core import USBError
 from .blobs import init_hardcoded, init_hardcoded_clean_slate
 
+supported_devices=[
+    (0x138a, 0x0097),
+    (0x06cb, 0x009a),
+]
+
+
+def custom_match(d):
+    return (d.idVendor, d.idProduct) in supported_devices
 
 class Usb():
     def __init__(self):
+        self.interrupt_cb = None
         self.trace_enabled = False
-        self.queue = Queue(maxsize=10)
         self.quit = None
+        self.dev = None
 
-    def purge_int_queue(self):
-        try:
-            while True:
-                self.queue.get_nowait()
-        except:
-            pass
+    def open(self, vendor=None, product=None):
+        if vendor is not None and product is not None:
+            dev = ucore.find(idVendor=vendor, idProduct=product)
+        else:
+            dev = ucore.find(custom_match=custom_match)
 
-    def open(self, vendor=0x06cb, product=0x009a):
-        self.dev = ucore.find(idVendor=vendor, idProduct=product)
+        self.open_dev(dev)
+
+    def open_dev(self, dev):
+        self.dev = dev
         self.dev.default_timeout = 15000
         self.thread = Thread(target=lambda: self.int_thread())
         self.thread.daemon = True
@@ -80,7 +89,14 @@ class Usb():
                 resp = self.dev.read(131, 1024, timeout=0)
                 resp = bytes(resp)
                 self.trace('<int< %s' % hexlify(resp).decode())
-                self.queue.put(resp)
+                cb=self.interrupt_cb
+                if cb is None:
+                    print('Ignoring spurious interrupt: %s' % hexlify(resp).decode())
+                else:
+                    try:
+                        cb(resp)
+                    except Exception as e:
+                        print('Exception on the interrupt thread: %s' % e)
         except USBError as e:
             self.trace('<int< Exception on interrupt thread: %s' % repr(e))
             if self.quit != None:
@@ -88,10 +104,6 @@ class Usb():
         finally:
             self.trace('<int< Interrupt thread is dead')
 
-
-    def wait_int(self):
-        resp = self.queue.get()
-        return resp
 
     def trace(self, s):
         if self.trace_enabled:

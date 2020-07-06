@@ -3,7 +3,7 @@ from time import sleep
 
 from proto9x.usb import usb
 from proto9x.tls import tls
-from proto9x.flash import read_flash
+from proto9x.flash import read_tls_flash
 from proto9x.init_flash import init_flash
 from proto9x.upload_fwext import upload_fwext
 from proto9x.init_db import init_db
@@ -18,7 +18,7 @@ def restart():
     tls.reset()
     usb.open()
     usb.send_init()
-    tls.parseTlsFlash(read_flash(1, 0, 0x1000))
+    tls.parseTlsFlash(read_tls_flash())
     tls.open()
 
 usb.open()

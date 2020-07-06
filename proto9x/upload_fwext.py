@@ -14,11 +14,12 @@ def default_fwext_name():
     if usb.usb_dev().idVendor == 0x138a:
         if usb.usb_dev().idProduct == 0x0090:
             return '6_07f_Lenovo.xpfwext'
-        elif usb.usb_dev().idProduct == 0x0097:
-            return '6_07f_lenovo_mis.xpfwext'
-    elif usb.usb_dev().idVendor == 0x06cb:
-        if usb.usb_dev().idProduct == 0x009a:
-            return '6_07f_lenovo_mis_qm.xpfwext'
+
+    # It looks like the firmware file must match DLL, not the hardware.
+    # Both DLL and xpfwext are universal. 
+    # The device dependant code seems to be loaded dynamically (via encrypted blobs).
+    # So, it is important that xpfwext file is matching the blobs contents.
+    return '6_07f_lenovo_mis_qm.xpfwext'
 
 def upload_fwext(fw_path=None):
     # no idea what this is:

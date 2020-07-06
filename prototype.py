@@ -5,33 +5,92 @@ from proto9x.db import db
 from proto9x.flash import read_flash
 from proto9x.sensor import *
 from proto9x.sid import *
+from proto9x.init import open as open9x
+from threading import Condition
+from time import sleep
+import code
 
-def open_common():
-    usb.send_init()
+#usb.trace_enabled = True
+#tls.trace_enabled = True
 
-    # try to init TLS session from the flash
-    tls.parseTlsFlash(read_flash(1, 0, 0x1000))
+def identify():
+    cv=Condition()
+    result=[]
 
-    tls.open()
-    tls.save()
-    sensor.open()
-    #usb.trace_enabled = True
-    #tls.trace_enabled = True
+    def update_cb(e):
+        print('Capture error: %s, try again' % repr(e))
 
-def open97():
-    usb.open(vendor=0x138a, product=0x0097)
-    open_common()
+    def complete_cb(rsp, e):
+        cv.acquire()
+        try:
+            result.append((rsp, e))
+            cv.notify()
+        finally:
+            cv.release()
 
-def open9a():
-    usb.open(vendor=0x06cb, product=0x009a)
-    open_common()
+    sensor.identify(update_cb, complete_cb)
 
-def load97():
-    #usb.trace_enabled = True
-    #tls.trace_enabled = True
-    usb.open()
-    tls.load()
-    sensor.open()
+    cv.acquire()
+    try:
+        cv.wait()
+        rsp, e = result[0]
+        if e is not None: raise e
 
+    except:
+        sensor.cancel()
+        raise
+    finally:
+        cv.release()
 
+    usrid, subtype, hsh = rsp
 
+    print('Got finger %x for user recordid %d. Hash: %s' % (subtype, usrid, hexlify(hsh).decode()))
+
+def enroll(sid, finger):
+    cv=Condition()
+    result=[]
+
+    def update_cb(x, e):
+        if e is not None:
+            print('Enroll error: %s, try again' % repr(e))
+        else:
+            print('Enroll progress: %s' % hexlify(x).decode())
+
+    def complete_cb(rsp, e):
+        cv.acquire()
+        try:
+            result.append((rsp, e))
+            cv.notify()
+        finally:
+            cv.release()
+
+    sensor.enroll(sid, finger, update_cb, complete_cb)
+
+    cv.acquire()
+    try:
+        cv.wait()
+        recid, e = result[0]
+        if e is not None: raise e
+
+    except:
+        sensor.cancel()
+        raise
+    finally:
+        cv.release()
+
+    print('Created a finger record with dbid %d' % recid)
+
+# can't use atexit as it conflicts with atexit installed by libusb
+class Blah:
+    def __init__(self):
+        self.tls=tls
+
+    def __del__(self):
+        if usb.dev is not None:
+            print('Rebooting device...')
+            try:
+                reboot()
+            except:
+                pass
+
+blah=Blah()

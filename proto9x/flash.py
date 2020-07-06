@@ -130,3 +130,5 @@ def write_fw_signature(partition, signature):
     rsp=tls.cmd(pack('<BBxH', 0x42, partition, len(signature)) + signature)
     assert_status(rsp)
 
+def read_tls_flash():
+    return read_flash(1, 0, 0x1000)

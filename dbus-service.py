@@ -1,68 +1,76 @@
 
-from threading import Thread
-from gi.repository import GLib
-from pydbus import SystemBus
-from pydbus.generic import signal
-import pkg_resources
-from time import sleep
-from prototype import *
-from proto9x.db import subtype_to_string
-from proto9x.sensor import cancel_capture
+import dbus
+import dbus.mainloop.glib
+import dbus.service
+dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+from gi.repository import GObject, GLib
+import logging
+
+from proto9x import init
+from proto9x.tls import tls
+from proto9x.usb import usb
+from proto9x.sid import sid_from_string
+from proto9x.db import subtype_to_string, db
+from proto9x.sensor import sensor, reboot
 import pwd
+import atexit
+import signal
 
-print("Starting up")
+GLib.threads_init()
 
-loop = GLib.MainLoop()
+INTERFACE_NAME='io.github.uunicorn.Fprint.Device'
+
+logging.basicConfig(level=logging.DEBUG)
+
+
+bus = dbus.SystemBus()
+bus_name = dbus.service.BusName('io.github.uunicorn.Fprint', bus)
+
+loop = GObject.MainLoop()
 
 usb.quit = lambda e: loop.quit()
 
-bus = SystemBus()
 
 def uid2identity(uid):
     sidstr='S-1-5-21-111111111-1111111111-1111111111-%d' % uid
     return sid_from_string(sidstr)
 
-class AlreadyInUse(Exception):
-    __name__ = 'net.reactivated.Fprint.Error.AlreadyInUse'
-
-class Device():
-    name = 'Validity sensor'
-
+class Device(dbus.service.Object):
     def __init__(self):
-        setattr(self, 'num-enroll-stages', 7)
-        setattr(self, 'scan-type', 'press')
-        self.capturing = False
+        dbus.service.Object.__init__(self, bus_name, '/io/github/uunicorn/Fprint/Device')
 
-    def Claim(self, usr):
-        print('In Claim %s' % usr)
-
-    def Release(self):
-        print('In Release')
-        self.caimed = False
-        
-    def ListEnrolledFingers(self, usr, dbus_context):
+    @dbus.service.method(dbus_interface=INTERFACE_NAME,
+                     in_signature="s",
+                     out_signature="as")
+    def ListEnrolledFingers(self, usr):
         try:
-            print('In ListEnrolledFingers %s' % usr)
+            logging.debug('In ListEnrolledFingers %s' % usr)
 
-            if len(usr) > 0:
-                pw=pwd.getpwnam(usr)
-                uid=pw.pw_uid
-            else:
-                sender=dbus_context.sender
-                uid=bus.dbus.GetConnectionUnixUser(dbus_context.sender)
-
+            pw=pwd.getpwnam(usr)
+            uid=pw.pw_uid
             usr=db.lookup_user(uid2identity(uid))
 
             if usr == None:
-                print('User not found on this device')
                 return []
             
             rc = [subtype_to_string(f['subtype']) for f in usr.fingers]
             print(repr(rc))
             return rc
         except Exception as e:
-            loop.quit()
             raise e
+
+    @dbus.service.method(dbus_interface=INTERFACE_NAME,
+                     in_signature='s',
+                     out_signature='')
+    def DeleteEnrolledFingers(self, user):
+        logging.debug('In DeleteEnrolledFingers %s' % user)
+        pw=pwd.getpwnam(user)
+        usr=db.lookup_user(uid2identity(pw.pw_uid))
+
+        if usr == None:
+            return
+
+        db.del_record(usr.dbid)
 
     def do_scan(self):
         if self.capturing:
@@ -71,34 +79,37 @@ class Device():
         try:
             self.capturing = True
             z=identify()
-            self.VerifyStatus('verify-match', True)
         except Exception as e:
-            self.VerifyStatus('verify-no-match', True)
             #loop.quit();
             raise e
         finally:
             self.capturing = False
 
-    def VerifyStart(self, finger_name):
-        print('In VerifyStart %s' % finger_name)
-        Thread(target=lambda: self.do_scan()).start()
-        #self.do_scan()
+    @dbus.service.method(dbus_interface=INTERFACE_NAME,
+                         in_signature='ss',
+                         out_signature='')
+    def VerifyStart(self, user, finger):
+        logging.debug('In VerifyStart %s' % finger)
 
-    def VerifyStop(self):
-        print('In VerifyStop')
-        if self.capturing:
-            cancel_capture()
+        def complete_cb(rsp, e):
+            if e is not None:
+                self.VerifyStatus('verify-no-match', True)
+            else:
+                self.VerifyStatus('verify-match', True)
+                usrid, subtype, hsh = rsp
+                # TODO pass down the user DB id
+                # check that a correct finger was identified
 
-    def DeleteEnrolledFingers(self, user):
-        print('In DeleteEnrolledFingers %s' % user)
-        pw=pwd.getpwnam(user)
-        usr=db.lookup_user(uid2identity(pw.pw_uid))
+        def update_cb(e):
+            self.VerifyStatus('verify-retry-scan', False)
 
-        if usr == None:
-            print('User not found on this device')
-            return
+        sensor.identify(update_cb, complete_cb)
 
-        db.del_record(usr.dbid)
+    @dbus.service.method(dbus_interface=INTERFACE_NAME,
+                         in_signature='',
+                         out_signature='')
+    def Cancel(self):
+        sensor.cancel()
 
     def do_enroll(self, finger_name, uid):
         # it is pointless to try and remember username passed in claim as Gnome does not seem to be passing anything useful anyway
@@ -112,56 +123,46 @@ class Device():
             #loop.quit();
             raise e
 
-    def EnrollStart(self, finger_name, dbus_context):
-        sender=dbus_context.sender
-        uid=bus.dbus.GetConnectionUnixUser(dbus_context.sender)
-        print('In EnrollStart %s for %d' % (finger_name, uid))
-        Thread(target=lambda: self.do_enroll(finger_name, uid)).start()
+    @dbus.service.method(dbus_interface=INTERFACE_NAME,
+                         in_signature='ss',
+                         out_signature='')
+    def EnrollStart(self, user, finger_name):
+        logging.debug('In EnrollStart %s for %s' % (finger_name, user))
+        pw=pwd.getpwnam(user)
+        uid=pw.pw_uid
+        def update_cb(rsp, e):
+            if e is not None:
+                self.EnrollStatus('enroll-retry-scan', False)
+            else:
+                self.EnrollStatus('enroll-stage-passed', False)
 
-    def EnrollStop(self):
-        print('In EnrollStop')
+        def complete_cb(rsp, e):
+            if e is not None:
+                self.EnrollStatus('enroll-failed', True)
+            else:
+                self.EnrollStatus('enroll-completed', True)
 
-    VerifyFingerSelected = signal()
-    VerifyStatus = signal()
-    EnrollStatus = signal()
+        sensor.enroll(uid2identity(uid), 0xf5, update_cb, complete_cb) # TODO parse the finger name
 
-class Manager():
-    def GetDevices(self):
-        print('In GetDevices')
-        return ['/net/reactivated/Fprint/Device/0']
+    @dbus.service.signal(dbus_interface=INTERFACE_NAME, signature='sb')
+    def VerifyStatus(self, result, done):
+        logging.debug('VerifyStatus')
 
-    def GetDefaultDevice(self):
-        print('In GetDefaultDevice')
-        return '/net/reactivated/Fprint/Device/0'
-
-
-def readif(fn):
-    with open('/usr/share/dbus-1/interfaces/' + fn, 'rb') as f:
-        # for some reason Gio can't seem to handle XML entities declared inline
-        return f.read().decode('utf-8') \
-                .replace('&ERROR_CLAIM_DEVICE;', 'net.reactivated.Fprint.Error.ClaimDevice') \
-                .replace('&ERROR_ALREADY_IN_USE;', 'net.reactivated.Fprint.Error.AlreadyInUse') \
-                .replace('&ERROR_INTERNAL;', 'net.reactivated.Fprint.Error.Internal') \
-                .replace('&ERROR_PERMISSION_DENIED;', 'net.reactivated.Fprint.Error.PermissionDenied') \
-                .replace('&ERROR_NO_ENROLLED_PRINTS;', 'net.reactivated.Fprint.Error.NoEnrolledPrints') \
-                .replace('&ERROR_NO_ACTION_IN_PROGRESS;', 'net.reactivated.Fprint.Error.NoActionInProgress') \
-                .replace('&ERROR_INVALID_FINGERNAME;', 'net.reactivated.Fprint.Error.InvalidFingername') \
-                .replace('&ERROR_NO_SUCH_DEVICE;', 'net.reactivated.Fprint.Error.NoSuchDevice')
-
-Device.dbus=[readif('net.reactivated.Fprint.Device.xml')]
-Manager.dbus=[readif('net.reactivated.Fprint.Manager.xml')]
+    @dbus.service.signal(dbus_interface=INTERFACE_NAME, signature='sb')
+    def EnrollStatus(self, result, done):
+        logging.debug('EnrollStatus')
 
 
-bus.publish('net.reactivated.Fprint', 
-        ('/net/reactivated/Fprint/Manager', Manager()), 
-        ('/net/reactivated/Fprint/Device/0', Device())
-    )
-
-open97()
+init.open()
 
 usb.trace_enabled = True
 tls.trace_enabled = True
 
-loop.run()
+svc = Device()
+try:
+    loop.run()
+finally:
+    reboot()
+    raise
 
 print("Normal exit")
