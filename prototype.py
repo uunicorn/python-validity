@@ -1,4 +1,3 @@
-
 from proto9x.tls import tls
 from proto9x.usb import usb
 from proto9x.db import db
@@ -80,17 +79,3 @@ def enroll(sid, finger):
 
     print('Created a finger record with dbid %d' % recid)
 
-# can't use atexit as it conflicts with atexit installed by libusb
-class Blah:
-    def __init__(self):
-        self.tls=tls
-
-    def __del__(self):
-        if usb.dev is not None:
-            print('Rebooting device...')
-            try:
-                reboot()
-            except:
-                pass
-
-blah=Blah()

@@ -39,6 +39,14 @@ class Usb():
         self.thread.daemon = True
         self.thread.start()
 
+    def close(self):
+        if self.dev is not None:
+            try:
+                self.dev.reset()
+                self.dev = None
+            finally:
+                self.thread.join()
+
     def usb_dev(self):
         return self.dev
 

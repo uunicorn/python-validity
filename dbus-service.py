@@ -159,10 +159,6 @@ usb.trace_enabled = True
 tls.trace_enabled = True
 
 svc = Device()
-try:
-    loop.run()
-finally:
-    reboot()
-    raise
+loop.run()
 
 print("Normal exit")
