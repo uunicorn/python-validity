@@ -52,7 +52,14 @@ The only reason you need to do this is to find `6_07f_lenovo_mis.xpfwext` (for v
 
       innoextract n1mgf03w.exe -e -I 6_07f_lenovo_mis.xpfwext # vfs0097
       innoextract n1cgn08w.exe -e -I 6_07f_Lenovo.xpfwext # vfs0090
-      innoextract nz3gf07w.exe -e -I 6_07f_lenovo_mis_qm.xpfwext # 009a
+      innoextract nz3gf07w.exe -e -I 6_07f_lenovo_mis_qm.xpfwext # vfs009a
+
+Note: the above may not be strictly true anymore. It looks like Validity is trying to maintain universal driver which supports all hardware.
+Same seems to be true for the .xpfwext files. I.e. the firmware file may not be very platform specific, however the firmware file
+must match the version of the Windows driver which contains the command/configuration blobs. Because we extract these blobs 
+from the actual driver DLL and logs, `python-validity` relies on a specific version of the firmware file. At the moment I can confirm
+that `python-validity` works on both vfs009a and vfs0097 with a firmware file `6_07f_lenovo_mis_qm.xpfwext` 
+(sha1 `edb295cc26a259ec54fef86646d1225f65bb6b80`).
 
 ### Factory reset
 If your device was previously paired with another OS or computer, you need to do a factory reset.
@@ -96,18 +103,8 @@ Python 3.6.7 (default, Oct 22 2018, 11:32:17)
 [GCC 8.2.0] on linux
 Type "help", "copyright", "credits" or "license" for more information.
 >>> from prototype import *
->>> open97() # use open9a() for a 06cb:009a sensor
+>>> open9x()
 >>>
-```
-Or load previosly saved TLS session (see comments in [holdthedoor.py](holdthedoor.py))
-```
-$ python3
-Python 3.6.7 (default, Oct 22 2018, 11:32:17) 
-[GCC 8.2.0] on linux
-Type "help", "copyright", "credits" or "license" for more information.
->>> from prototype import *
->>> load97()
->>> 
 ```
 
 ### Enroll a new user
@@ -156,21 +153,11 @@ All done
 Recognised finger f5 (WINBIO_FINGER_UNSPECIFIED_POS_01) from user S-1-5-21-111111111-1111111111-1111111111-1000
 Template hash: 36bc1fe077e59a3090c816fcf2798c30a85d8a8fbe000ead5c6a946c3bacef7b
 ```
+
 ## DBus service
-Sources contain a simple DBus service which can impersonate [fprint](https://www.freedesktop.org/wiki/Software/fprint/) daemon. 
-Install fprint, edit /usr/share/dbus-1/system-services/net.reactivated.Fprint.service by commenting out activation info:
-```
-#Exec=/usr/lib/fprintd/fprintd
-#User=root
-#SystemdService=fprintd.service
-```
-start a fake service with something like this:
-```
-while sleep 1; do
-    python3 dbus-service.py
-    echo "====restart==="
-done
-```
+Sources contain [dbus-service.py](dbus-service.py) file, which is a simple DBus service which can serve list/enroll/verify/delete prints.
+Previosly it was trying to impersonate [fprint](https://www.freedesktop.org/wiki/Software/fprint/) daemon. 
+Right now it owns it's personal DBus name `io.github.uunicorn.Fprint` and implements a slightly different interface.
 
 
 ## Debugging
