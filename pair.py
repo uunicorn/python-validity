@@ -7,7 +7,7 @@ from proto9x.flash import read_tls_flash
 from proto9x.init_flash import init_flash
 from proto9x.upload_fwext import upload_fwext
 from proto9x.init_db import init_db
-from proto9x.sensor import sensor
+from proto9x.sensor import sensor, reboot
 
 #usb.trace_enabled=True
 #tls.trace_enabled=True
@@ -21,20 +21,24 @@ def restart():
     tls.parseTlsFlash(read_tls_flash())
     tls.open()
 
-usb.open()
-print('Initializing flash...')
-init_flash()
+try:
+    usb.open()
+    print('Initializing flash...')
+    init_flash()
 
-restart()
-print('Uploading firmware...')
-upload_fwext()
+    restart()
+    print('Uploading firmware...')
+    upload_fwext()
 
-restart()
-print('Calibrating...')
-sensor.open(False)
-sensor.calibrate()
+    restart()
+    print('Calibrating...')
+    sensor.open(False)
+    sensor.calibrate()
 
-print('Init database...')
-init_db()
+    print('Init database...')
+    init_db()
 
-print('That\'s it, pairing\'s finished')
+    print('That\'s it, pairing\'s finished')
+finally:
+    sleep(1)
+    reboot()
