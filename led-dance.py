@@ -4,10 +4,10 @@ import os
 
 from binascii import unhexlify
 from enum import Enum
-from proto9x.flash import read_flash
-from proto9x.sensor import *
-from proto9x.tls import tls as vfs_tls
-from proto9x.usb import usb as vfs_usb
+from validitysensor.flash import read_flash
+from validitysensor.sensor import *
+from validitysensor.tls import tls as vfs_tls
+from validitysensor.usb import usb as vfs_usb
 from time import sleep
 from usb import core as usb_core
 

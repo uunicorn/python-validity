@@ -30,14 +30,14 @@ from enum import Enum, auto
 from time import sleep
 from usb import core as usb_core
 
-from proto9x.flash import read_flash
-from proto9x.init_db import init_db
-from proto9x.init_flash import init_flash
-from proto9x.sensor import sensor as vfs_sensor
-from proto9x.sensor import factory_reset
-from proto9x.tls import tls as vfs_tls
-from proto9x.upload_fwext import upload_fwext
-from proto9x.usb import usb as vfs_usb
+from validitysensor.flash import read_flash
+from validitysensor.init_db import init_db
+from validitysensor.init_flash import init_flash
+from validitysensor.sensor import sensor as vfs_sensor
+from validitysensor.sensor import factory_reset
+from validitysensor.tls import tls as vfs_tls
+from validitysensor.upload_fwext import upload_fwext
+from validitysensor.usb import usb as vfs_usb
 
 class VFS(Enum):
     DEV_90 = (0x138a, 0x0090)

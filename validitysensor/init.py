@@ -1,11 +1,11 @@
 
 import atexit
 
-from proto9x.usb import usb
-from proto9x.tls import tls
-from proto9x.sensor import sensor
-from proto9x.sensor import reboot
-from proto9x.flash import read_tls_flash
+from validitysensor.usb import usb
+from validitysensor.tls import tls
+from validitysensor.sensor import sensor
+from validitysensor.sensor import reboot
+from validitysensor.flash import read_tls_flash
 
 def close():
     if usb.dev is not None:

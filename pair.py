@@ -1,13 +1,13 @@
 
 from time import sleep
 
-from proto9x.usb import usb
-from proto9x.tls import tls
-from proto9x.flash import read_tls_flash
-from proto9x.init_flash import init_flash
-from proto9x.upload_fwext import upload_fwext
-from proto9x.init_db import init_db
-from proto9x.sensor import sensor, reboot
+from validitysensor.usb import usb
+from validitysensor.tls import tls
+from validitysensor.flash import read_tls_flash
+from validitysensor.init_flash import init_flash
+from validitysensor.upload_fwext import upload_fwext
+from validitysensor.init_db import init_db
+from validitysensor.sensor import sensor, reboot
 
 #usb.trace_enabled=True
 #tls.trace_enabled=True

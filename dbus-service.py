@@ -6,12 +6,12 @@ dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 from gi.repository import GObject, GLib
 import logging
 
-from proto9x import init
-from proto9x.tls import tls
-from proto9x.usb import usb
-from proto9x.sid import sid_from_string
-from proto9x.db import subtype_to_string, db
-from proto9x.sensor import sensor, reboot
+from validitysensor import init
+from validitysensor.tls import tls
+from validitysensor.usb import usb
+from validitysensor.sid import sid_from_string
+from validitysensor.db import subtype_to_string, db
+from validitysensor.sensor import sensor, reboot
 import pwd
 import atexit
 import signal

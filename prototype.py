@@ -1,10 +1,10 @@
-from proto9x.tls import tls
-from proto9x.usb import usb
-from proto9x.db import db
-from proto9x.flash import read_flash
-from proto9x.sensor import *
-from proto9x.sid import *
-from proto9x.init import open as open9x
+from validitysensor.tls import tls
+from validitysensor.usb import usb
+from validitysensor.db import db
+from validitysensor.flash import read_flash
+from validitysensor.sensor import *
+from validitysensor.sid import *
+from validitysensor.init import open as open9x
 from threading import Condition
 from time import sleep
 import code
