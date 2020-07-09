@@ -1,19 +1,20 @@
 import re
 import hmac
 import sys
-from hashlib import sha256, md5, sha1
-from binascii import *
-from .usb import unhex, usb
-from struct import pack, unpack
-from Crypto.Cipher import AES
-from Crypto.Random import get_random_bytes
-from fastecdsa.curve import P256
-from fastecdsa.point import Point
-from fastecdsa.keys import gen_private_key, get_public_key
-from fastecdsa.ecdsa import sign, verify
-from fastecdsa.encoding.der import DEREncoder
-from .util import assert_status
+import os
 import pickle
+from struct import pack, unpack
+from binascii import *
+
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
+from cryptography.hazmat.primitives import hashes
+from hashlib import sha256
+
+from .usb import unhex, usb
+from .util import assert_status
 
 
 password_hardcoded=unhexlify('717cd72d0962bc4a2846138dbb2c24192512a76407065f383846139d4bec2033')
@@ -31,6 +32,8 @@ ae6bcffffffffffffffff00000000ffffffff0000000000000000000000000000000000000000000
 000000000000000000000000ffffffffffffffffffffffff00000000000000000000000001000000fffff
 fff000000000000000000000000000000000000000000000000000000000000000000000000
 ''')
+
+crypto_backend=default_backend()
 
 def prf(secret, seed, length):
     n = (length + 0x20 - 1) // 0x20
@@ -141,17 +144,11 @@ class Tls():
         self.handshake_hash.update(b)
 
     def make_keys(self):
-        #self.session_private=0x2E38AFE3D563398E5962D2CDEA7FE16D3CFEA36656A9DEC412C648EE3A232D21
-        self.session_private = gen_private_key(P256)
-        self.session_public = get_public_key(self.session_private, P256)
-
-        pre_master_secret = self.session_private*self.ecdh_q
-        pre_master_secret = pre_master_secret.x
-        pre_master_secret = to_bytes(pre_master_secret)[::-1]
-
+        skey = ec.generate_private_key(ec.SECP256R1(), crypto_backend)
+        self.session_public = skey.private_numbers().public_numbers
+        pre_master_secret = skey.exchange(ec.ECDH(), self.ecdh_q)
         seed = self.client_random + self.server_random
         self.master_secret = prf(pre_master_secret, b'master secret'+seed, 0x30)
-
         key_block = prf(self.master_secret, b'key expansion'+seed, 0x120)
         self.sign_key = key_block[0x00:0x20]
         self.validation_key = key_block[0x20:0x20+0x20]
@@ -181,17 +178,19 @@ class Tls():
 
     def decrypt(self, c):
         iv, c = c[:0x10], c[0x10:]
-        aes=AES.new(self.decryption_key, AES.MODE_CBC, iv)
-        m=aes.decrypt(c)
+        cipher = Cipher(algorithms.AES(self.decryption_key), modes.CBC(iv), backend=crypto_backend)
+        decryptor = cipher.decryptor()
+        m = decryptor.update(c) + decryptor.finalize()
         m=unpad(m)
         return m
 
     def encrypt(self, b):
         #iv = unhexlify('454849acdd075174d6b9e713a957c2e7')
-        iv = get_random_bytes(0x10)
-        aes=AES.new(self.encryption_key, AES.MODE_CBC, iv)
+        iv = os.urandom(0x10)
+        cipher = Cipher(algorithms.AES(self.encryption_key), modes.CBC(iv), backend=crypto_backend)
+        encryptor = cipher.encryptor()
         b=pad(b)
-        c=aes.encrypt(b)
+        c=encryptor.update(b) + encryptor.finalize()
         return iv + c
 
     def validate(self, t, b):
@@ -240,8 +239,7 @@ class Tls():
 
     def make_cert_verify(self):
         buf=self.handshake_hash.copy().digest()
-        s=sign(hexlify(buf).decode(), self.priv_key, prehashed=True)
-        b=DEREncoder().encode_signature(s[0], s[1])
+        b=self.priv_key.sign(buf, ec.ECDSA(Prehashed(hashes.SHA256())))
         return self.with_neg_hdr(0x0f, b)
 
     def handle_server_hello(self, p):
@@ -369,7 +367,7 @@ class Tls():
     def make_client_hello(self):
         h = unhexlify('0303') # TLS 1.2
         #self.client_random = unhexlify('bc349559ac16c8f8362191395b4d04a435d870315f519eed8777488bc2b9600c')
-        self.client_random = get_random_bytes(0x20)
+        self.client_random = os.urandom(0x20)
         h += self.client_random # client's random
         h += with_1byte_size(unhexlify('00000000000000')) # session ID
 
@@ -459,10 +457,10 @@ class Tls():
 
         x, y = [int(hexlify(i[::-1]), 0x10) for i in [x, y]]
 
-        if not P256.is_point_on_curve( (x, y) ):
-            raise Exception('Point is not on the curve')
+        # Raises ValueError unless on the curve
+        pubkey = ec.EllipticCurvePublicNumbers(x, y, ec.SECP256R1()).public_key(crypto_backend)
 
-        self.ecdh_q = Point(x, y, P256)
+        self.ecdh_q = pubkey
         self.trace('ECDH params:')
         self.trace('x=0x%x' % x)
         self.trace('y=0x%x' % y)
@@ -476,15 +474,13 @@ class Tls():
 
         # The following pub key is hardcoded for each fw revision in the synaWudfBioUsb.dll.
         # Corresponding private key should only be known to a genuine Synaptic device.
-        fwpub=Point(
+        fwpub = ec.EllipticCurvePublicNumbers(
             0xf727653b4e16ce0665a6894d7f3a30d7d0a0be310d1292a743671fdf69f6a8d3, 
-            0xa85538f8b6bec50d6eef8bd5f4d07a886243c58b2393948df761a84721a6ca94, P256)
+            0xa85538f8b6bec50d6eef8bd5f4d07a886243c58b2393948df761a84721a6ca94, ec.SECP256R1()).public_key(crypto_backend)
 
-        signature=DEREncoder().decode_signature(signature)
+        # throws InvalidSignature
+        fwpub.verify(signature, key, ec.ECDSA(hashes.SHA256()))
 
-        if not verify(signature, key, fwpub):
-            raise Exception('Untrusted device')
-        
 
     def handle_priv(self, body):
         self.priv_blob = body
@@ -497,9 +493,10 @@ class Tls():
         if hs != sig:
             raise Exception('Signature verification failed. This device was probably paired with another computer.')
         
-        iv, c = c[:AES.block_size], c[AES.block_size:]
-        aes=AES.new(self.psk_encryption_key, AES.MODE_CBC, iv)
-        m=aes.decrypt(c)
+        iv, c = c[:0x10], c[0x10:]
+        cipher = Cipher(algorithms.AES(self.psk_encryption_key), modes.CBC(iv), backend=crypto_backend)
+        decryptor = cipher.decryptor()
+        m = decryptor.update(c) + decryptor.finalize()
         m=m[:-m[-1]] # unpad (standard this time)
 
         x, m = m[:0x20], m[0x20:]
@@ -508,17 +505,16 @@ class Tls():
 
         x, y, d = [int(hexlify(i[::-1]), 0x10) for i in [x, y, d]]
 
-        if not P256.is_point_on_curve( (x, y) ):
-            raise Exception('Point is not on the curve')
-
-        # TODO check if the priv key belogs to this public key
-
         self.trace('Private key:')
         self.trace('x=0x%x' % x)
         self.trace('y=0x%x' % y)
         self.trace('d=0x%x' % d)
 
-        self.pub_key = Point(x, y, P256)
-        self.priv_key = d
+        # Someone has reported that x and y are 0 after pairing with the latest windows driver,
+        # for compatibility we could derive x and y with a following call:
+        #ec.derive_private_key(d, ec.SECP256R1(), backend=crypto_backend)
+
+        pub_key = ec.EllipticCurvePublicNumbers(x, y, ec.SECP256R1())
+        self.priv_key = ec.EllipticCurvePrivateNumbers(d, pub_key).private_key(crypto_backend)
 
 tls = Tls(usb)

@@ -1,18 +1,19 @@
 
-from .tls import tls, hs_key, crt_hardcoded
-from hashlib import sha256
-import hmac
+import os
 from struct import pack, unpack
 from binascii import hexlify, unhexlify
+
+from hashlib import sha256
+import hmac
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+
+from .tls import tls, hs_key, crt_hardcoded
 from .usb import usb
 from .flash import write_flash, erase_flash, flush_changes, PartitionInfo, get_flash_info
 from .sensor import reboot
-from Crypto.Random import get_random_bytes
-from Crypto.Cipher import AES
-from fastecdsa.encoding.der import DEREncoder
-from fastecdsa.curve import P256
-from fastecdsa.ecdsa import sign
-from fastecdsa.keys import gen_private_key, get_public_key
 from .util import assert_status, unhex
 from .blobs import reset_blob
 
@@ -32,6 +33,8 @@ partition_signature=unhex('''
 deb2604834e2bb62e890b0ce405b3b8ef2fec2aab3e22bff23f89a58ff0dc015fece5d3ed3f5496ace879a92980aec9d85eb7e9df245eae03a41acfd4e7d1cb1
 dbd0df42d534904de00b6389f68867646e9d7c3d0b1dffd74070b2d0f2049b9f1dc7b0c9651c59be3ea891674725e1f2f7a484a941615b80211105978369cf71
 ''')
+
+crypto_backend=default_backend()
 
 def get_partition_signature():
     if usb.usb_dev().idVendor == 0x138a:
@@ -53,9 +56,11 @@ def encrypt_key(client_private, client_public):
     l = 16 - (len(m) % 16)
     m = m + bytes([l])*l
 
-    iv = get_random_bytes(AES.block_size)
-    aes = AES.new(tls.psk_encryption_key, AES.MODE_CBC, iv)
-    c = iv + aes.encrypt(m)
+    iv = os.urandom(0x10)
+    cipher = Cipher(algorithms.AES(tls.psk_encryption_key), modes.CBC(iv), backend=crypto_backend)
+    encryptor = cipher.encryptor()
+    c = iv + encryptor.update(m) + encryptor.finalize()
+
     sig = hmac.new(tls.psk_validation_key, c, sha256).digest()
     return b'\x02' + c + sig
     
@@ -65,8 +70,8 @@ def make_cert(client_public):
             (b'\0'*0x24) +
             unhexlify('%064x' % client_public.y)[::-1] +
             (b'\0'*0x4c))
-    s=sign(msg, hs_key())
-    s=DEREncoder().encode_signature(s[0], s[1])
+    pk = ec.derive_private_key(hs_key(), ec.SECP256R1(), backend=crypto_backend)
+    s=pk.sign(msg, ec.ECDSA(hashes.SHA256()))
     s=pack('<L', len(s)) + s
     msg = msg + s
     msg += b'\0'*(444 - len(msg)) # FIXME not sure this math is right
@@ -105,8 +110,10 @@ def partition_flash(layout, client_public):
 def init_flash():
     assert_status(usb.cmd(reset_blob))
 
-    client_private = gen_private_key(P256)
-    client_public = get_public_key(client_private, P256)
+    skey = ec.generate_private_key(ec.SECP256R1(), crypto_backend)
+    snums = skey.private_numbers()
+    client_private = snums.private_value
+    client_public = snums.public_numbers
 
     partition_flash(flash_layout_hardcoded, client_public)
 

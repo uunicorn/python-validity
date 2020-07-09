@@ -44,6 +44,8 @@ class Usb():
             try:
                 self.dev.reset()
                 self.dev = None
+            except:
+                pass
             finally:
                 self.thread.join()
 

@@ -1,3 +1,2 @@
-fastecdsa==1.7.4
-git+https://github.com/fabiant7t/pycrypto#egg=pycrypto
-pyusb==1.0.2
+cryptography>=2.1.4 
+pyusb>=1.0.2
