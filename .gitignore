@@ -1,4 +1,7 @@
 __pycache__
+build
+dist
+python3_validity.egg-info/
 tls.dict
 *.bin
 *.log

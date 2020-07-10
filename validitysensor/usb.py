@@ -15,6 +15,7 @@ supported_devices=[
 
 
 def custom_match(d):
+    print(d.address)
     return (d.idVendor, d.idProduct) in supported_devices
 
 class Usb():

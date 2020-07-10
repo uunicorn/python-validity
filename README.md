@@ -4,9 +4,9 @@ Originally designed to capture some of my findings for 138a:0097, but if you man
 
 ## Setting up
 
-To install Python dependencies run
+On a Debian-based system, to re-install from sources (useful for testing):
 ```
-$ pip3 install -r requirements.txt
+./setup.py install --force --install-layout deb --prefix=/usr --root=/
 ```
 
 ## Initialization

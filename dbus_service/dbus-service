@@ -1,4 +1,6 @@
+#!/usr/bin/env python3
 
+import argparse
 import dbus
 import dbus.mainloop.glib
 import dbus.service
@@ -20,12 +22,6 @@ GLib.threads_init()
 
 INTERFACE_NAME='io.github.uunicorn.Fprint.Device'
 
-logging.basicConfig(level=logging.DEBUG)
-
-
-bus = dbus.SystemBus()
-bus_name = dbus.service.BusName('io.github.uunicorn.Fprint', bus)
-
 loop = GObject.MainLoop()
 
 usb.quit = lambda e: loop.quit()
@@ -36,7 +32,7 @@ def uid2identity(uid):
     return sid_from_string(sidstr)
 
 class Device(dbus.service.Object):
-    def __init__(self):
+    def __init__(self, bus_name):
         dbus.service.Object.__init__(self, bus_name, '/io/github/uunicorn/Fprint/Device')
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME,
@@ -153,12 +149,27 @@ class Device(dbus.service.Object):
         logging.debug('EnrollStatus')
 
 
-init.open()
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser('Open fprintd DBus service')
+    parser.add_argument('--debug', help='Enable tracing', action='store_true')
+    args = parser.parse_args()
 
-usb.trace_enabled = True
-tls.trace_enabled = True
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
 
-svc = Device()
-loop.run()
+    init.open()
 
-print("Normal exit")
+    usb.trace_enabled = True
+    tls.trace_enabled = True
+
+    bus = dbus.SystemBus()
+    bus_name = dbus.service.BusName('io.github.uunicorn.Fprint', bus)
+
+    svc = Device(bus_name)
+    mgr = bus.get_object('net.reactivated.Fprint', '/net/reactivated/Fprint/Manager')
+    mgr = dbus.Interface(mgr, 'net.reactivated.Fprint.Manager')
+    mgr.RegisterDevice(svc)
+    logging.debug('Registered')
+
+    loop.run()
+
