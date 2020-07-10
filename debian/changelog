@@ -1,3 +1,9 @@
+python-validity (0.2~ppa1) bionic; urgency=medium
+
+  * Fix scripts.
+
+ -- uunicorn <viktor.dragomiretskyy@gmail.com>  Sat, 11 Jul 2020 02:42:56 +1200
+
 python-validity (0.1~ppa1) bionic; urgency=medium
 
   * Initial release.
