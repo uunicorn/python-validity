@@ -1,3 +1,10 @@
+python-validity (0.3~ppa1) bionic; urgency=medium
+
+  * Don't need to own a well-known bus name any more.
+  * Allow open-fprintd call our methods.
+
+ -- uunicorn <viktor.dragomiretskyy@gmail.com>  Sat, 11 Jul 2020 05:40:12 +1200
+
 python-validity (0.2~ppa1) bionic; urgency=medium
 
   * Fix scripts.
