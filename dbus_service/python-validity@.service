@@ -1,0 +1,12 @@
+# TODO me
+
+[Unit]
+Description=python-validity driver dbus service for %I
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/python-validity/dbus-service %i
+Restart=no
+
+#[Install]
+#WantedBy=multi-user.target

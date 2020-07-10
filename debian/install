@@ -1,0 +1,5 @@
+usr/bin
+usr/lib/python*/*-packages/*.egg-info
+usr/lib/python*/*-packages/validitysensor/*.py
+usr/lib/python-validity
+usr/share/python-validity

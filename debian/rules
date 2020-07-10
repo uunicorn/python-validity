@@ -1,0 +1,10 @@
+#!/usr/bin/make -f
+
+#export DH_VERBOSE = 1
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+override_dh_auto_install:
+	python3 ./setup.py install --root=$(CURDIR)/debian/tmp --prefix=/usr --install-layout=deb
+

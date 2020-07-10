@@ -1,0 +1,4 @@
+# TODO me
+
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTRS{idVendor}=="138a", ATTRS{idProduct}=="0097", TAG+="systemd", ENV{SYSTEMD_WANTS}+="python-validity@usb-$env{BUSNUM}-$env{DEVNUM}.service"
+

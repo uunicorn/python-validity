@@ -1,0 +1,25 @@
+Source: python-validity
+Section: misc
+Priority: optional
+Maintainer: uunicorn <viktor.dragomiretskyy@gmail.com>
+Build-Depends: debhelper (>= 7.0.50~), 
+ dh-python, 
+ python3-all, 
+ python3-setuptools
+X-Python3-Version: >= 3.6
+Standards-Version: 3.9.2
+
+Package: python3-validity
+Architecture: all
+Depends: ${python3:Depends},
+ ${misc:Depends},
+ python3-dbus,
+ python3-usb,
+ dbus,
+ open-fprintd (>= 0.2~)
+XB-Python-Version: ${python3:Versions}
+Description: Validity Fingerprint Sensor DBus Driver
+ This package adds support to some Validity sensors.
+ .
+ Warning: this is an experimental software. It lacks proper auth checks.
+ Install and use at your own risk.

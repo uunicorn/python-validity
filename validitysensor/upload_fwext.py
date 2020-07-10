@@ -9,6 +9,7 @@ from .sensor import reboot, write_hw_reg32, read_hw_reg32, identify_sensor
 from .flash import flush_changes, read_flash, erase_flash, write_flash_all, write_fw_signature, get_fw_info
 from .util import assert_status
 
+firmware_home='/usr/share/python-validity'
 
 def default_fwext_name():
     if usb.usb_dev().idVendor == 0x138a:
@@ -32,7 +33,7 @@ def upload_fwext(fw_path=None):
     # ^ TODO -- what is the real reason to detect HW at this stage?
     #           just a guess: perhaps it is used to construct fwext filename
 
-    default_name = default_fwext_name()
+    default_name = firmware_home + '/' + default_fwext_name()
     if not fw_path:
         fw_path = default_name
     elif basename(fw_path) != default_name:

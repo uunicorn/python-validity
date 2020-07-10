@@ -2,7 +2,7 @@
 
 from setuptools import setup
 
-setup(name='python3-validity',
+setup(name='python-validity',
     version='0.1',
     py_modules = [],
     packages=['validitysensor'],
@@ -15,6 +15,7 @@ setup(name='python3-validity',
         'pyusb >= 1.0.2'
     ],
     data_files=[
+        ('share/python-validity/playground/', ['factory-reset.py', 'pair.py', 'prototype.py']),
         ('lib/python-validity/', ['dbus_service/dbus-service']),
     ]
 )
