@@ -155,10 +155,15 @@ Template hash: 36bc1fe077e59a3090c816fcf2798c30a85d8a8fbe000ead5c6a946c3bacef7b
 ```
 
 ## DBus service
-Sources contain [dbus-service.py](dbus-service.py) file, which is a simple DBus service which can serve list/enroll/verify/delete prints.
-Previosly it was trying to impersonate [fprint](https://www.freedesktop.org/wiki/Software/fprint/) daemon. 
-Right now it owns it's personal DBus name `io.github.uunicorn.Fprint` and implements a slightly different interface.
-To use standard clients like gnome settings with this service, you need a [broker service](https://github.com/uunicorn/open-fprintd) which replaces the standard `fprintd` daemon.
+
+When started, DBus service will first try to initialize the device, then it will try to register itself with the
+[open-fprintd](https://github.com/uunicorn/open-fprintd) service. If `open-fprintd` is not available it will wait for it
+to come up.
+
+To start DBus service from the sources (useful for debugging):
+```
+PYTHONPATH=. ./dbus_service/dbus-service
+```
 
 
 ## Debugging
