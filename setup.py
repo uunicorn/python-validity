@@ -16,6 +16,7 @@ setup(name='python-validity',
     ],
     data_files=[
         ('share/python-validity/playground/', ['factory-reset.py', 'pair.py', 'prototype.py']),
+        ('share/dbus-1/system.d/', ['dbus_service/io.github.uunicorn.Fprint.conf']),
         ('lib/python-validity/', ['dbus_service/dbus-service']),
     ]
 )

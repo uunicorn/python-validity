@@ -161,9 +161,8 @@ if __name__ == '__main__':
     tls.trace_enabled = True
 
     bus = dbus.SystemBus()
-    bus_name = dbus.service.BusName('io.github.uunicorn.Fprint', bus)
 
-    svc = Device(bus_name)
+    svc = Device(bus)
 
     watcher = None
     def watch_cb(name):
@@ -175,6 +174,9 @@ if __name__ == '__main__':
             mgr = dbus.Interface(mgr, 'net.reactivated.Fprint.Manager')
             mgr.RegisterDevice(svc)
     watcher = bus.watch_name_owner('net.reactivated.Fprint', watch_cb)
+
+    # Kick off the open-fprintd if it was not started yet
+    bus.get_object('net.reactivated.Fprint', '/net/reactivated/Fprint/Manager')
 
     loop.run()
 
