@@ -82,7 +82,7 @@ class VFSInitializer():
 
     def open_device(self, init=False):
         print('Opening device',hex(self.dev_type.value[1]))
-        vfs_usb.open(product=self.dev_type.value[1])
+        vfs_usb.open(vendor=self.dev_type.value[0], product=self.dev_type.value[1])
 
         if init:
             vfs_usb.send_init()

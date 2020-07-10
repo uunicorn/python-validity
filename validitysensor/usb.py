@@ -9,6 +9,7 @@ from usb.core import USBError
 from .blobs import init_hardcoded, init_hardcoded_clean_slate
 
 supported_devices=[
+    (0x138a, 0x0090),
     (0x138a, 0x0097),
     (0x06cb, 0x009a),
 ]
