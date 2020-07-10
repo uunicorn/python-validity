@@ -85,7 +85,16 @@ class Tls():
     def __init__(self, usb):
         self.usb = usb
         self.reset()
-        self.set_hwkey(product_name='VirtualBox', serial_number='0')
+        try:
+            with open('/sys/class/dmi/id/product_name', 'r') as node:
+                product_name = node.read().strip()
+            with open('/sys/class/dmi/id/product_serial', 'r') as node:
+                product_serial = node.read().strip()
+        except:
+            product_name = 'VirtualBox'
+            product_serial = '0'
+
+        self.set_hwkey(product_name=product_name, serial_number=product_serial)
 
     def reset(self):
         self.trace_enabled = False

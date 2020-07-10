@@ -24,13 +24,14 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
+import shutil
 
 
 from enum import Enum, auto
 from time import sleep
 from usb import core as usb_core
 
-from validitysensor.flash import read_flash
+from validitysensor.flash import read_tls_flash
 from validitysensor.init_db import init_db
 from validitysensor.init_flash import init_flash
 from validitysensor.sensor import sensor as vfs_sensor
@@ -50,8 +51,8 @@ DEFAULT_URIS = {
         'referral': 'https://support.lenovo.com/us/en/downloads/DS120491',
     },
     VFS.DEV_97: {
-        'driver': 'https://download.lenovo.com/pccbbs/mobiles/n1mgf03w.exe',
-        'referral': 'https://download.lenovo.com/pccbbs/mobiles/n1mgf03w.exe'
+        'driver': 'https://download.lenovo.com/pccbbs/mobiles/nz3gf07w.exe',
+        'referral': 'https://download.lenovo.com/pccbbs/mobiles/nz3gf07w.exe'
     },
     VFS.DEV_9a: {
         'driver': 'https://download.lenovo.com/pccbbs/mobiles/nz3gf07w.exe',
@@ -61,7 +62,7 @@ DEFAULT_URIS = {
 
 DEFAULT_FW_NAMES = {
     VFS.DEV_90: '6_07f_Lenovo.xpfwext',
-    VFS.DEV_97: '6_07f_lenovo_mis.xpfwext',
+    VFS.DEV_97: '6_07f_lenovo_mis_qm.xpfwext',
     VFS.DEV_9a: '6_07f_lenovo_mis_qm.xpfwext'
 }
 
@@ -75,26 +76,9 @@ class VFSInitializer():
 
         print('Found device {}'.format(self.dev_str))
 
-        try:
-            if self.args.simulate_virtualbox:
-                raise(Exception())
-
-            with open('/sys/class/dmi/id/product_name', 'r') as node:
-                self.product_name = node.read().strip()
-            with open('/sys/class/dmi/id/product_serial', 'r') as node:
-                self.product_serial = node.read().strip()
-        except:
-            self.product_name = 'VirtualBox'
-            self.product_serial = '0'
-
-        if self.args.host_product:
-            self.product_name = self.args.host_product
-
-        if self.args.host_serial:
-            self.product_serial = self.args.host_serial
-
-        vfs_tls.set_hwkey(product_name=self.product_name,
-            serial_number=self.product_serial)
+        if self.args.host_product or self.args.host_serial:
+            vfs_tls.set_hwkey(product_name=self.args.host_product,
+                serial_number=self.args.host_serial)
 
     def open_device(self, init=False):
         print('Opening device',hex(self.dev_type.value[1]))
@@ -104,7 +88,7 @@ class VFSInitializer():
             vfs_usb.send_init()
 
             # try to init TLS session from the flash
-            vfs_tls.parseTlsFlash(read_flash(1, 0, 0x1000))
+            vfs_tls.parseTlsFlash(read_tls_flash())
             vfs_tls.open()
 
     def restart(self):
@@ -155,10 +139,11 @@ class VFSInitializer():
             print('Factory reset failed with {}, this should not happen, but ' \
                     'we can ignore it, if pairing works...'.format(e))
 
-    def pair(self, fwpath):
-        print('Pairing the sensor with device {}'.format(self.product_name))
+    def pair(self):
+        print('Pairing the sensor with device')
 
         max_retries = 5
+        err = None
         for i in range(0, max_retries):
             try:
                 self.open_device()
@@ -167,7 +152,8 @@ class VFSInitializer():
                 init_flash()
                 break
             except Exception as e:
-                err = e
+                if err is None:
+                    err = e
                 self.sleep()
                 print('Try {} failed with error: {}'.format(i+1, e))
             finally:
@@ -181,29 +167,14 @@ class VFSInitializer():
         self.restart()
 
         print('Uploading firmware...')
-        upload_fwext(fw_path=fwpath)
+        upload_fwext()
 
         self.sleep()
         self.restart()
 
-        if self.args.calibration_data:
-            calib_data_file = self.args.calibration_data.name
-        else:
-            calib_data_file = 'calib-data.bin'
-
-        print('Calibrating, re-using {}, if any...'.format(calib_data_file))
+        print('Calibrating...')
         vfs_sensor.open()
-        if os.path.exists(calib_data_file):
-            vfs_sensor.calibrate()
-        else:
-            try:
-                calib_data_file = os.path.join(tempfile.mkdtemp(), 'calib-data.bin')
-                vfs_sensor.calibrate()
-                print('Calibration data saved at {}'.format(calib_data_file))
-            except Exception as e:
-                print('Calibration failed using device data ({}), ' \
-                      'You can try loading a local `calib-data.bin` blob, ' \
-                      'the device should work anyway, so skipping...'.format(e))
+        vfs_sensor.calibrate()
 
         print('Init database...')
         init_db()
@@ -221,6 +192,7 @@ if __name__ == "__main__":
     parser.add_argument('--host-product')
     parser.add_argument('--host-serial')
     parser.add_argument('--simulate-virtualbox', action='store_true')
+    parser.add_argument('--download-fw-only', action='store_true')
 
     args = parser.parse_args()
 
@@ -256,9 +228,12 @@ if __name__ == "__main__":
             fwpath = vfs_initializer.download_and_extract_fw(fwdir,
                 fwuri=args.driver_uri)
 
-        input('The device will be now reset to factory and associated to the ' \
-                'current laptop.\nPress Enter to continue (or Ctrl+C to cancel)...')
+        shutil.copy(fwpath, '/usr/share/python-validity/')
 
-        vfs_initializer.try_factory_reset()
-        vfs_initializer.sleep()
-        vfs_initializer.pair(fwpath)
+        if not args.download_fw_only:
+            input('The device will be now reset to factory and associated to the ' \
+                    'current laptop.\nPress Enter to continue (or Ctrl+C to cancel)...')
+
+            vfs_initializer.try_factory_reset()
+            vfs_initializer.sleep()
+            vfs_initializer.pair()
