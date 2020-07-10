@@ -15,8 +15,6 @@ from validitysensor.sid import sid_from_string
 from validitysensor.db import subtype_to_string, db
 from validitysensor.sensor import sensor, reboot
 import pwd
-import atexit
-import signal
 
 GLib.threads_init()
 
@@ -166,10 +164,17 @@ if __name__ == '__main__':
     bus_name = dbus.service.BusName('io.github.uunicorn.Fprint', bus)
 
     svc = Device(bus_name)
-    mgr = bus.get_object('net.reactivated.Fprint', '/net/reactivated/Fprint/Manager')
-    mgr = dbus.Interface(mgr, 'net.reactivated.Fprint.Manager')
-    mgr.RegisterDevice(svc)
-    logging.debug('Registered')
+
+    watcher = None
+    def watch_cb(name):
+        if name == '':
+            logging.debug('Manager is offline')
+        else:
+            logging.debug('Manager is back online, registering')
+            mgr = bus.get_object(name, '/net/reactivated/Fprint/Manager')
+            mgr = dbus.Interface(mgr, 'net.reactivated.Fprint.Manager')
+            mgr.RegisterDevice(svc)
+    watcher = bus.watch_name_owner('net.reactivated.Fprint', watch_cb)
 
     loop.run()
 
