@@ -17,8 +17,7 @@ def close():
         finally:
             usb.close()
 
-def open():
-    usb.open()
+def open_common():
     usb.send_init()
     # We must register atexit only after we opened usb device, 
     # so that our handler is called before pyusb's one and we can still talk to the device
@@ -29,5 +28,10 @@ def open():
 
     sensor.open()
 
+def open():
+    usb.open()
+    open_common()
 
-
+def open_devpath(busnum, address):
+    usb.open_devpath(busnum, address)
+    open_common()

@@ -15,9 +15,6 @@ supported_devices=[
 ]
 
 
-def custom_match(d):
-    return (d.idVendor, d.idProduct) in supported_devices
-
 class Usb():
     def __init__(self):
         self.interrupt_cb = None
@@ -29,11 +26,25 @@ class Usb():
         if vendor is not None and product is not None:
             dev = ucore.find(idVendor=vendor, idProduct=product)
         else:
-            dev = ucore.find(custom_match=custom_match)
+            def match(d):
+                return (d.idVendor, d.idProduct) in supported_devices
+
+            dev = ucore.find(custom_match=match)
+
+        self.open_dev(dev)
+
+    def open_devpath(self, busnum, address):
+        def match(d):
+            return d.bus == busnum and d.address == address
+            
+        dev = ucore.find(custom_match=match)
 
         self.open_dev(dev)
 
     def open_dev(self, dev):
+        if dev is None:
+            raise Exception('No matching devices found')
+
         self.dev = dev
         self.dev.default_timeout = 15000
         self.thread = Thread(target=lambda: self.int_thread())
