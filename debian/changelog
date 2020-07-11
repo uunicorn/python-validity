@@ -1,3 +1,9 @@
+python-validity (0.3~ppa2) bionic; urgency=medium
+
+  * Add missing dbus conf file
+
+ -- uunicorn <viktor.dragomiretskyy@gmail.com>  Sat, 11 Jul 2020 12:33:19 +1200
+
 python-validity (0.3~ppa1) bionic; urgency=medium
 
   * Don't need to own a well-known bus name any more.
