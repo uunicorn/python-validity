@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+#DEBHELPER#
+
+if [ "$1" = "configure" ]; then
+    systemctl daemon-reload || true
+    udevadm control --reload-rules || true
+    udevadm trigger || true
+fi
+

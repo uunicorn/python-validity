@@ -1,4 +1,5 @@
 debian/tmp/
+debian/debhelper-build-stamp
 debian/python3-validity/
 debian/python3-validity.substvars
 debian/python3-validity.prerm.debhelper

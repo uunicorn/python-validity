@@ -5,6 +5,7 @@ import re
 import dbus
 import dbus.mainloop.glib
 import dbus.service
+from binascii import hexlify, unhexlify
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 from gi.repository import GObject, GLib
 import logging
@@ -147,6 +148,12 @@ class Device(dbus.service.Object):
     def EnrollStatus(self, result, done):
         logging.debug('EnrollStatus')
 
+    @dbus.service.method(dbus_interface=INTERFACE_NAME,
+                         in_signature='s',
+                         out_signature='s')
+    def RunCmd(self, cmd):
+        logging.debug('RunCmd')
+        return hexlify(tls.app(unhexlify(cmd))).decode()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Open fprintd DBus service')

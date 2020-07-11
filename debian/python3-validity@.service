@@ -1,0 +1,9 @@
+[Unit]
+Description=python-validity driver dbus service for %I
+#StopWhenUnneeded=true
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/python-validity/dbus-service --devpath %i
+Restart=no
+

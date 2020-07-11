@@ -2,12 +2,12 @@ Source: python-validity
 Section: misc
 Priority: optional
 Maintainer: uunicorn <viktor.dragomiretskyy@gmail.com>
-Build-Depends: debhelper (>= 7.0.50~), 
+Build-Depends: debhelper (>= 11~), 
  dh-python, 
  python3-all, 
  python3-setuptools
 X-Python3-Version: >= 3.6
-Standards-Version: 3.9.2
+Standards-Version: 4.1.4
 
 Package: python3-validity
 Architecture: all

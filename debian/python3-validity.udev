@@ -1,0 +1,19 @@
+SUBSYSTEM!="usb", GOTO="python_validity_end"
+ENV{DEVTYPE}!="usb_device", GOTO="python_validity_end"
+
+ATTRS{idVendor}=="138a", ATTRS{idProduct}=="0090", GOTO="python_validity_match"
+ATTRS{idVendor}=="138a", ATTRS{idProduct}=="0097", GOTO="python_validity_match"
+ATTRS{idVendor}=="06cb", ATTRS{idProduct}=="009a", GOTO="python_validity_match"
+
+GOTO="python_validity_end"
+
+LABEL="python_validity_match"
+
+#TAG+="validity"
+
+ACTION=="add|change", RUN+="/bin/systemctl --no-block start python3-validity@usb-$env{BUSNUM}-$env{DEVNUM}.service"
+ACTION=="remove", RUN+="/bin/systemctl --no-block stop python3-validity@usb-$env{BUSNUM}-$env{DEVNUM}.service"
+# TODO: Figure out why the following is not working properly instead:
+#TAG+="systemd", ENV{SYSTEMD_WANTS}+="python3-validity@usb-$env{BUSNUM}-$env{DEVNUM}.service"
+
+LABEL="python_validity_end"
