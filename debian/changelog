@@ -1,3 +1,9 @@
+python-validity (0.4~ppa1) bionic; urgency=medium
+
+  * Attempt to start from udev
+
+ -- uunicorn <viktor.dragomiretskyy@gmail.com>  Sun, 12 Jul 2020 04:09:30 +1200
+
 python-validity (0.3~ppa2) bionic; urgency=medium
 
   * Add missing dbus conf file
