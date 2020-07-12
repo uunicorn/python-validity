@@ -1,3 +1,10 @@
+python-validity (0.5~ppa1) bionic; urgency=medium
+
+  * Incrementally pair with the device. 
+  * Try downloading the firmware from postinst. 
+
+ -- uunicorn <viktor.dragomiretskyy@gmail.com>  Sun, 12 Jul 2020 14:50:31 +1200
+
 python-validity (0.4~ppa1) bionic; urgency=medium
 
   * Attempt to start from udev
