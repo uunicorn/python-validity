@@ -5,5 +5,6 @@ Description=python-validity driver dbus service for %I
 [Service]
 Type=simple
 ExecStart=/usr/lib/python-validity/dbus-service --devpath %i
+StandardOutput=syslog
 Restart=no
 

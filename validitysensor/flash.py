@@ -121,10 +121,10 @@ def write_flash_all(partition, ptr, buf):
         write_flash(partition, ptr, chunk)
         ptr += len(chunk)
 
-def read_flash_all(partition, start, end):
+def read_flash_all(partition, start, size):
     bs = 0x1000
-    blocks = [read_flash(partition, addr, bs) for addr in range(start, end, bs)]
-    return b''.join(blocks)
+    blocks = [read_flash(partition, addr, bs) for addr in range(start, start+size, bs)]
+    return b''.join(blocks)[:size]
 
 def write_fw_signature(partition, signature):
     rsp=tls.cmd(pack('<BBxH', 0x42, partition, len(signature)) + signature)

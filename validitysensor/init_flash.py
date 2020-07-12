@@ -85,13 +85,8 @@ def serialize_partition(p):
     b = b + b'\0'*4 + sha256(b).digest()
     return b
 
-def partition_flash(layout, client_public):
-    info = get_flash_info()
-
+def partition_flash(info, layout, client_public):
     print('Detected Flash IC: %s, %d bytes' % (info.ic.name, info.ic.size))
-
-    if len(info.partitions) > 0:
-        raise Exception('Flash is already partitioned')
 
     cmd = unhex('4f 0000 0000')
     cmd += with_hdr(0, serialize_flash_params(info.ic)) 
@@ -108,6 +103,14 @@ def partition_flash(layout, client_public):
     # ^ TODO - figure out what the rest of rsp means
 
 def init_flash():
+    info = get_flash_info()
+
+    if len(info.partitions) > 0:
+        print('Flash has %d partitions.' % len(info.partitions))
+        return
+    else:
+        print('Flash was not initialized yet. Formatting...')
+
     assert_status(usb.cmd(reset_blob))
 
     skey = ec.generate_private_key(ec.SECP256R1(), crypto_backend)
@@ -115,7 +118,7 @@ def init_flash():
     client_private = snums.private_value
     client_public = snums.public_numbers
 
-    partition_flash(flash_layout_hardcoded, client_public)
+    partition_flash(info, flash_layout_hardcoded, client_public)
 
     rsp=usb.cmd(unhex('01'))
     assert_status(rsp)
@@ -150,5 +153,6 @@ def init_flash():
     # Persist certs and keys on cert partition.
     write_flash(1, 0, tls.makeTlsFlash())
 
-    # Reboot
+    # Reboot. 
+    # The device will disconnect and our service will be started by udev as soon as it is connected again.
     reboot()

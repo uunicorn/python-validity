@@ -1,6 +1,9 @@
 
 from validitysensor.usb import usb
-from validitysensor.sensor import factory_reset
+from validitysensor.sensor import factory_reset, RebootException
 
-usb.open()
-factory_reset()
+try:
+    usb.open()
+    factory_reset()
+except RebootException:
+    pass

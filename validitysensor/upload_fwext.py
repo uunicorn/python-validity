@@ -23,6 +23,13 @@ def default_fwext_name():
     return '6_07f_lenovo_mis_qm.xpfwext'
 
 def upload_fwext(fw_path=None):
+    fwi=get_fw_info(2)
+    if fwi != None:
+        print('Detected firmware version %d.%d (%s))' % (fwi.major, fwi.minor, ctime(fwi.buildtime)))
+        return
+    else:
+        print('No firmware detected. Uploading...')
+
     # no idea what this is:
     write_hw_reg32(0x8000205c, 7)
     if read_hw_reg32(0x80002080) not in [2, 3]:
@@ -32,6 +39,7 @@ def upload_fwext(fw_path=None):
     print('Sensor: %s' % dev.name)
     # ^ TODO -- what is the real reason to detect HW at this stage?
     #           just a guess: perhaps it is used to construct fwext filename
+
 
     default_name = firmware_home + '/' + default_fwext_name()
     if not fw_path:
@@ -46,10 +54,6 @@ def upload_fwext(fw_path=None):
     fwext=fwext[fwext.index(b'\x1a')+1:]
     fwext, signature = fwext[:-0x100], fwext[-0x100:]
 
-    fwi=get_fw_info(2)
-    if fwi != None:
-        raise Exception('FW is already present (version %d.%d (%s))' % (fwi.major, fwi.minor, ctime(fwi.buildtime)))
-
     #flush_changes()
     write_flash_all(2, 0, fwext)
     write_fw_signature(2, signature)
@@ -62,3 +66,4 @@ def upload_fwext(fw_path=None):
 
     # Reboot
     reboot()
+    raise Exception('Reboot')

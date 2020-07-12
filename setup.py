@@ -8,7 +8,7 @@ setup(name='python-validity',
     packages=['validitysensor'],
     scripts=[
         'bin/validity-led-dance',
-        'bin/validity-sensors-initializer',
+        'bin/validity-sensors-firmware',
     ],
     install_requires=[
         'cryptography >= 2.1.4',
@@ -21,7 +21,6 @@ setup(name='python-validity',
             'scripts/dbus-cmd.py', 
             'scripts/lsdbus.py', 
             'scripts/factory-reset.py', 
-            'scripts/pair.py', 
             'scripts/prototype.py'
         ]),
     ]

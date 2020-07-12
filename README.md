@@ -1,12 +1,16 @@
 # python-validity
-Validity fingerprint sensor library.
-Originally designed to capture some of my findings for 138a:0097, but if you manage to get it working for some other Validity sensor - pull requests are welcome.
+Validity fingerprint sensor driver.
 
 ## Setting up
 
-On a Debian-based system, to re-install from sources (useful for testing):
+On Ubuntu system:
 ```
-./setup.py install --force --install-layout deb --prefix=/usr --root=/
+$ sudo apt remove fprintd
+$ sudo add-apt-repository ppa:uunicorn/open-fprintd
+$ sudo aptget update
+$ sudo apt install open-fprintd fprintd-clients python-validity
+...wait a bit...
+$ fprintd-enroll
 ```
 
 ## Initialization

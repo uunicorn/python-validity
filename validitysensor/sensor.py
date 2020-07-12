@@ -5,7 +5,7 @@ import os.path
 from .tls import tls
 from .usb import usb
 from .db import db, subtype_to_string
-from .flash import write_enable, flush_changes, read_flash, erase_flash, write_flash_all
+from .flash import write_enable, flush_changes, read_flash, erase_flash, write_flash_all, read_flash_all
 from time import sleep
 from struct import pack, unpack
 from .table_types import SensorTypeInfo, SensorCaptureProg
@@ -55,9 +55,12 @@ def write_hw_reg32(addr, val):
     rsp=tls.cmd(pack('<BLLB', 8, addr, val, 4))
     assert_status(rsp)
 
+class RebootException(Exception):
+    pass
 
 def reboot():
     assert_status(tls.cmd(unhex('050200')))
+    raise RebootException()
 
 def factory_reset():
     assert_status(usb.cmd(reset_blob))
@@ -192,7 +195,7 @@ class CancelledException(Exception):
 class Sensor():
     calib_data=b''
 
-    def open(self, load_calib_data=True):
+    def open(self):
         self.interrupt_cb = None
         self.device_info = identify_sensor()
 
@@ -227,13 +230,7 @@ class Sensor():
         if 7 in factory_bits:
             self.factory_calib_data = factory_bits[7][4:]
 
-        if load_calib_data and os.path.isfile(calib_data_path):
-            with open(calib_data_path, 'rb') as f:
-                self.calib_data = f.read()
-                print('Calibration data loaded from a file.')
-        else:
-            self.calib_data = b''
-            print('Warning: no calibration data was loaded. Consider calibrating the sensor.')
+        self.calibrate()
 
     def save(self):
         with open(calib_data_path, 'wb') as f:
@@ -569,7 +566,43 @@ class Sensor():
 
         write_flash_all(6, 0, clean_slate)
 
+    def check_clean_slate(self):
+        start = read_flash(6, 0, 0x44)
+        magic, l = unpack('<HH', start[:4])
+        start = start[4:]
+
+        if magic != 0x5002:
+            return False
+
+        hs, zeroes = start[0:0x20], start[0x20:0x40]
+        
+        if zeroes != b'\0'*0x20:
+            print('Unexpected contents in calibration flash partition')
+            return False
+
+        img = read_flash_all(6, 0x44, l)
+        if hs != sha256(img).digest():
+            print('Calibration flash hash mismatch')
+            print(hexlify(hs), hexlify(img))
+            return False
+
+        return True
+
+
     def calibrate(self):
+        if os.path.isfile(calib_data_path):
+            with open(calib_data_path, 'rb') as f:
+                self.calib_data = f.read()
+                print('Calibration data loaded from a file.')
+
+            if self.check_clean_slate():
+                return
+            else:
+                print('No calibration data on the flash. Calibrating...')
+        else:
+            self.calib_data = b''
+            print('No calibration data was loaded. Calibrating...')
+
         for i in range(0, self.calibration_iterations):
             print('Calibration iteration %d...' % i)
             rsp = tls.cmd(self.build_cmd_02(CaptureMode.CALIBRATE))
@@ -586,7 +619,7 @@ class Sensor():
         clean_slate = pack('<H', len(clean_slate)) + clean_slate
         clean_slate = clean_slate + pack('<H', 0) # TODO: still don't know what this zero is for
         clean_slate = pack('<H', len(clean_slate)) + sha256(clean_slate).digest() + b'\0'*0x20 + clean_slate
-        clean_slate = unhexlify('0250') + clean_slate
+        clean_slate = pack('<H', 0x5002) + clean_slate
 
         self.persist_clean_slate(clean_slate)
         self.save()
