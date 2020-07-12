@@ -3,8 +3,7 @@ import atexit
 
 from validitysensor.usb import usb
 from validitysensor.tls import tls
-from validitysensor.sensor import sensor
-from validitysensor.sensor import reboot
+from validitysensor.sensor import sensor, reboot, RebootException
 from validitysensor.flash import read_tls_flash
 from validitysensor.init_flash import init_flash
 from validitysensor.upload_fwext import upload_fwext
