@@ -13,91 +13,12 @@ $ sudo apt install open-fprintd fprintd-clients python-validity
 $ fprintd-enroll
 ```
 
-## Initialization
+## Playground
 
-### Automatic factory reset, pairing and firmware flashing
-
-This repo includes `validity-sensors-initializer.py`, a simple tool that
-helps initializing Validity fingerprint readers under linux, loading their
-binary firmware and initializing them.
-
-This tool currently only supports these sensors:
-- 138a:0090 Validity Sensors, Inc. VFS7500 Touch Fingerprint Sensor
-- 138a:0097 Validity Sensors, Inc.
-- 06cb:009a Synaptics, Inc.
-Which are present in various ThinkPad and HP laptops.
-
-These devices communicate with the laptop via an encrypted protocol and they
-need to be paired with the host computer in order to work and compute the
-TLS keys.
-Such initialization is normally done by the Windows driver, however thanks to
-the amazing efforts of Viktor Dragomiretskyy (uunicorn), and previously of
-Nikita Mikhailov, we have reverse-engineerd the pairing process, and so it's
-possible to do it under Linux with only native tools as well.
-
-The procedure is quite simple:
-- Device is factory-reset and its flash repartitioned
-- A TLS key is negotiated, generated via host hw ID and serial
-- Windows driver is downloaded from Lenovo to extract the device firmware
-- The device firmware is uploaded to the device
-- The device is calibrated
-
-Once the chip is paired with the computer via this tool, it's possible to use
-it in libfprint using the driver at
-- https://github.com/3v1n0/libfprint/
-
----
-
-### Getting the firmware
-
-It's possible to just extract [official Lenovo device driver for vfs0097](https://support.lenovo.com/us/en/downloads/DS121407) or [device driver for 009a](https://pcsupport.lenovo.com/us/en/products/laptops-and-netbooks/thinkpad-t-series-laptops/thinkpad-t580-type-20l9-20la/downloads/driver-list/component?name=Fingerprint%20Reader) or [driver for vfs0090](https://support.lenovo.com/us/en/downloads/DS120491) (also [part of the SCCM package](https://support.lenovo.com/ec/th/downloads/DS112113) using [innoextract](https://constexpr.org/innoextract/) (available for all the distros), or `wine`.
-
-The only reason you need to do this is to find `6_07f_lenovo_mis.xpfwext` (for vfs0097) or `6_07f_Lenovo.xpfwext` (for vfs0090) and copy it to this project location.
-
-      innoextract n1mgf03w.exe -e -I 6_07f_lenovo_mis.xpfwext # vfs0097
-      innoextract n1cgn08w.exe -e -I 6_07f_Lenovo.xpfwext # vfs0090
-      innoextract nz3gf07w.exe -e -I 6_07f_lenovo_mis_qm.xpfwext # vfs009a
-
-Note: the above may not be strictly true anymore. It looks like Validity is trying to maintain universal driver which supports all hardware.
-Same seems to be true for the .xpfwext files. I.e. the firmware file may not be very platform specific, however the firmware file
-must match the version of the Windows driver which contains the command/configuration blobs. Because we extract these blobs 
-from the actual driver DLL and logs, `python-validity` relies on a specific version of the firmware file. At the moment I can confirm
-that `python-validity` works on both vfs009a and vfs0097 with a firmware file `6_07f_lenovo_mis_qm.xpfwext` 
-(sha1 `edb295cc26a259ec54fef86646d1225f65bb6b80`).
-
-### Factory reset
-If your device was previously paired with another OS or computer, you need to do a factory reset.
-This will erase all fingers from the internal database and make the device ready for pairing.
-```
-$ python3 factory-reset.py
-$
-```
-
-### Pairing
-After performing a factory reset you need to pair your device with a host computer.
-This must be done only once, before you can enroll/identify/verify fingers.
-If pairing returns "errorException: Failed: 0315", you need to run factory_reset.py (again) before re-trying.
-```
-$ python3 pair.py
-Initializing flash...
-Detected Flash IC: W25Q80B, 1048576 bytes
-Clean slate
-Uploading firmware...
-Sensor: VSI 55E  FM209-001
-Loaded FWExt version 1.1 (Sat Feb  3 05:07:30 2018), 8 modules
-Calibrating...
-Sensor: VSI 55E  FM209-001
-FWExt version 1.1 (Sat Feb  3 05:07:30 2018), 8 modules
-Calibration data loaded from the file.
-Init database...
-Creating a new user storage object
-Creating a host machine GUID record
-That's it, pairing's finished
-$ 
-```
-
-## Examples
-Here is a couple of examples of how you can use this library. All examples assume that your device is already paired.
+This package contains a set of scripts you can use to do a low-level debugging of the sensor protocol.
+Here is a couple of examples of how you can use them.
+Before using the scripts, make sure you've disabled the dbus service shipped with this package.
+All examples assume that you are in `/usr/share/python-validity/playground/` directory and your device is already paired.
 
 ### Initialize a session
 Before talking to a device you will need to open it and start a new TLS session
