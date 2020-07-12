@@ -1,3 +1,9 @@
+python-validity (0.6~ppa1) bionic; urgency=medium
+
+  * Add dependency on innoextract 
+
+ -- uunicorn <viktor.dragomiretskyy@gmail.com>  Mon, 13 Jul 2020 11:30:03 +1200
+
 python-validity (0.5~ppa1) bionic; urgency=medium
 
   * Incrementally pair with the device. 
