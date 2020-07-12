@@ -8,7 +8,7 @@ On Ubuntu system:
 $ sudo apt remove fprintd
 $ sudo add-apt-repository ppa:uunicorn/open-fprintd
 $ sudo aptget update
-$ sudo apt install open-fprintd fprintd-clients python3-validity
+$ sudo apt install open-fprintd fprintd-clients python-validity
 ...wait a bit...
 $ fprintd-enroll
 ```
