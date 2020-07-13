@@ -1,3 +1,11 @@
+python-validity (0.7~ppa1) bionic; urgency=medium
+
+  * Use single instance of a systemd service (at least for now)
+  * Switch to use logger instead of prints
+  * Catch signals to enforce graceful shutdown
+
+ -- uunicorn <viktor.dragomiretskyy@gmail.com>  Mon, 13 Jul 2020 17:49:58 +1200
+
 python-validity (0.6~ppa1) bionic; urgency=medium
 
   * Add dependency on innoextract 
