@@ -2,6 +2,7 @@
 from enum import Enum
 from hashlib import sha256
 import os.path
+import logging
 from .tls import tls
 from .usb import usb
 from .db import db, subtype_to_string
@@ -199,7 +200,7 @@ class Sensor():
         self.interrupt_cb = None
         self.device_info = identify_sensor()
 
-        print('Opening sensor: %s' % self.device_info.name)
+        logging.info('Opening sensor: %s' % self.device_info.name)
         self.type_info = SensorTypeInfo.get_by_type(self.device_info.type)
         
         if self.device_info.type == 0x199:
@@ -558,10 +559,10 @@ class Sensor():
 
         if start != b'\xff' * 0x44:
             if clean_slate[:0x44] == start:
-                print('Calibration data already matches the data on the flash.')
+                logging.info('Calibration data already matches the data on the flash.')
                 return
             else:
-                print('Calibration flash already written. Erasing.')
+                logging.info('Calibration flash already written. Erasing.')
                 erase_flash(6)
 
         write_flash_all(6, 0, clean_slate)
@@ -577,13 +578,12 @@ class Sensor():
         hs, zeroes = start[0:0x20], start[0x20:0x40]
         
         if zeroes != b'\0'*0x20:
-            print('Unexpected contents in calibration flash partition')
+            logging.warning('Unexpected contents in calibration flash partition')
             return False
 
         img = read_flash_all(6, 0x44, l)
         if hs != sha256(img).digest():
-            print('Calibration flash hash mismatch')
-            print(hexlify(hs), hexlify(img))
+            logging.warning('Calibration flash hash mismatch')
             return False
 
         return True
@@ -593,23 +593,23 @@ class Sensor():
         if os.path.isfile(calib_data_path):
             with open(calib_data_path, 'rb') as f:
                 self.calib_data = f.read()
-                print('Calibration data loaded from a file.')
+                logging.info('Calibration data loaded from a file.')
 
             if self.check_clean_slate():
                 return
             else:
-                print('No calibration data on the flash. Calibrating...')
+                logging.info('No calibration data on the flash. Calibrating...')
         else:
             self.calib_data = b''
-            print('No calibration data was loaded. Calibrating...')
+            logging.info('No calibration data was loaded. Calibrating...')
 
         for i in range(0, self.calibration_iterations):
-            print('Calibration iteration %d...' % i)
+            logging.debug('Calibration iteration %d...' % i)
             rsp = tls.cmd(self.build_cmd_02(CaptureMode.CALIBRATE))
             assert_status(rsp)
             self.process_calibration_results(self.average(usb.read_82()))
 
-        print('Requesting a blank image...')
+        logging.debug('Requesting a blank image...')
 
         # Get the "clean slate" image to store on the flash for fine-grained after-capture adjustments
         rsp = tls.cmd(self.build_cmd_02(CaptureMode.CALIBRATE))
@@ -753,7 +753,7 @@ class Sensor():
                 elif tag == 3:
                     tid = res[magic_len:magic_len+l]
                 else:
-                    print('Ignoring unknown tag %x' % tag)
+                    logging.warning('Ignoring unknown tag %x' % tag)
                     
                 res=res[magic_len+l:]
 

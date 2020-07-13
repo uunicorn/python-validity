@@ -3,6 +3,7 @@ import hmac
 import sys
 import os
 import pickle
+import logging
 from struct import pack, unpack
 from binascii import *
 
@@ -143,7 +144,7 @@ class Tls():
 
     def trace(self, s):
         if self.trace_enabled:
-            print(s)
+            logging.debug(s)
 
     def app(self, b):
         b = b() if callable(b) else b

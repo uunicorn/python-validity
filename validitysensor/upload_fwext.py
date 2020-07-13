@@ -1,6 +1,7 @@
 
 from binascii import hexlify, unhexlify
 from time import ctime
+import logging
 from os.path import basename
 
 from .tls import tls
@@ -25,10 +26,10 @@ def default_fwext_name():
 def upload_fwext(fw_path=None):
     fwi=get_fw_info(2)
     if fwi != None:
-        print('Detected firmware version %d.%d (%s))' % (fwi.major, fwi.minor, ctime(fwi.buildtime)))
+        logging.info('Detected firmware version %d.%d (%s))' % (fwi.major, fwi.minor, ctime(fwi.buildtime)))
         return
     else:
-        print('No firmware detected. Uploading...')
+        logging.info('No firmware detected. Uploading...')
 
     # no idea what this is:
     write_hw_reg32(0x8000205c, 7)
@@ -36,7 +37,7 @@ def upload_fwext(fw_path=None):
         raise Exception('Unexpected register value')
 
     dev=identify_sensor()
-    print('Sensor: %s' % dev.name)
+    logging.debug('Sensor: %s' % dev.name)
     # ^ TODO -- what is the real reason to detect HW at this stage?
     #           just a guess: perhaps it is used to construct fwext filename
 
@@ -45,7 +46,7 @@ def upload_fwext(fw_path=None):
     if not fw_path:
         fw_path = default_name
     elif basename(fw_path) != default_name:
-        print('WARNING: Your device fw is supposed to be called {}'.format(
+        logging.warning('WARNING: Your device fw is supposed to be called {}'.format(
             default_name))
 
     with open(fw_path, 'rb') as f:
@@ -62,7 +63,7 @@ def upload_fwext(fw_path=None):
     if fwi == None:
         raise Exception('No firmware detected')
 
-    print('Loaded FWExt version %d.%d (%s), %d modules' % (fwi.major, fwi.minor, ctime(fwi.buildtime), len(fwi.modules)))
+    logging.info('Loaded FWExt version %d.%d (%s), %d modules' % (fwi.major, fwi.minor, ctime(fwi.buildtime), len(fwi.modules)))
 
     # Reboot
     reboot()

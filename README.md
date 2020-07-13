@@ -96,6 +96,7 @@ If you are curious you can enable tracing to see what flows in and out of device
 ```
 >>> tls.trace_enabled=True
 >>> usb.trace_enabled=True
+>>> logging.basicConfig(level=logging.DEBUG)
 >>> db.dump_all()
 >tls> 17: 4b00000b0053746757696e64736f7200
 >cmd> 1703030050c00a7ff1cf76e90f168141b4bc519ca9598eacb575ff01b7552a3707be8506b246d5272cb119e7b8b3eccd991cb7d8387245953ff1da62cebfb07fae7e47b9b536fb1a82185cc9399d30625ee3c1451f

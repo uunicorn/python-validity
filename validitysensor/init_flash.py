@@ -2,6 +2,7 @@
 import os
 from struct import pack, unpack
 from binascii import hexlify, unhexlify
+import logging
 
 from hashlib import sha256
 import hmac
@@ -86,7 +87,7 @@ def serialize_partition(p):
     return b
 
 def partition_flash(info, layout, client_public):
-    print('Detected Flash IC: %s, %d bytes' % (info.ic.name, info.ic.size))
+    logging.info('Detected Flash IC: %s, %d bytes' % (info.ic.name, info.ic.size))
 
     cmd = unhex('4f 0000 0000')
     cmd += with_hdr(0, serialize_flash_params(info.ic)) 
@@ -106,10 +107,10 @@ def init_flash():
     info = get_flash_info()
 
     if len(info.partitions) > 0:
-        print('Flash has %d partitions.' % len(info.partitions))
+        logging.info('Flash has %d partitions.' % len(info.partitions))
         return
     else:
-        print('Flash was not initialized yet. Formatting...')
+        logging.info('Flash was not initialized yet. Formatting...')
 
     assert_status(usb.cmd(reset_blob))
 

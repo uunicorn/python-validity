@@ -1,4 +1,5 @@
 
+import logging
 import usb.core as ucore
 from binascii import *
 from .util import assert_status, unhex
@@ -80,7 +81,7 @@ class Usb():
         (err,), rsp = unpack('<H', rsp[:2]), rsp[2:]
         if err != 0:
             # fwext is not loaded
-            print('Clean slate')
+            logging.info('Clean slate')
             self.cmd(init_hardcoded_clean_slate)
 
     def cmd(self, out):
@@ -113,12 +114,12 @@ class Usb():
                 self.trace('<int< %s' % hexlify(resp).decode())
                 cb=self.interrupt_cb
                 if cb is None:
-                    print('Ignoring spurious interrupt: %s' % hexlify(resp).decode())
+                    logging.warning('Ignoring spurious interrupt: %s' % hexlify(resp).decode())
                 else:
                     try:
                         cb(resp)
                     except Exception as e:
-                        print('Exception on the interrupt thread: %s' % e)
+                        logging.warning('Exception on the interrupt thread: %s' % e)
         except USBError as e:
             self.trace('<int< Exception on interrupt thread: %s' % repr(e))
             if self.quit != None:
@@ -129,6 +130,6 @@ class Usb():
 
     def trace(self, s):
         if self.trace_enabled:
-            print(s)
+            logging.debug(s)
 
 usb=Usb()

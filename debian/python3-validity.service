@@ -1,0 +1,8 @@
+[Unit]
+Description=python-validity driver dbus service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/python-validity/dbus-service --debug
+Restart=no
+

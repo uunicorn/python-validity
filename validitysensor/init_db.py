@@ -1,5 +1,6 @@
 
 from struct import pack, unpack
+import logging
 
 from .db import db
 from .usb import usb
@@ -15,13 +16,13 @@ def machine_id_rec_value(b):
 def init_db(machine_guid='e7260876-58db-4d27-8c40-8d13110d6a71'):
     stg = db.get_user_storage(name='StgWindsor')
     if stg == None:
-        print('Creating a new user storage object')
+        logging.info('Creating a new user storage object')
         db.new_user_storate()
 
     rc = db.get_storage_data()
 
     if rc == []:
-        print('Creating a host machine GUID record')
+        logging.info('Creating a host machine GUID record')
         stg = db.get_user_storage(name='StgWindsor')
         db.new_record(stg.dbid, 0x8, stg.dbid, machine_id_rec_value(machine_guid))
         rc = db.get_storage_data()

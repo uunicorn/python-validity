@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import signal
 import argparse
 import re
 import os
@@ -10,8 +11,9 @@ import dbus.mainloop.glib
 import dbus.service
 from binascii import hexlify, unhexlify
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
-from gi.repository import GObject, GLib
+from gi.repository import GLib
 import logging
+import logging.handlers
 
 from validitysensor import init
 from validitysensor.tls import tls
@@ -25,7 +27,7 @@ GLib.threads_init()
 
 INTERFACE_NAME='io.github.uunicorn.Fprint.Device'
 
-loop = GObject.MainLoop()
+loop = GLib.MainLoop()
 
 usb.quit = lambda e: loop.quit()
 
@@ -53,7 +55,7 @@ class Device(dbus.service.Object):
                 return []
             
             rc = [subtype_to_string(f['subtype']) for f in usr.fingers]
-            print(repr(rc))
+            logging.debug(repr(rc))
             return rc
         except Exception as e:
             raise e
@@ -115,7 +117,7 @@ class Device(dbus.service.Object):
         try:
             # TODO hardcode the username and finger for now
             z=enroll(uid2identity(uid), 0xf5)
-            print('Enroll was successfull')
+            logging.debug('Enroll was successfull')
             self.EnrollStatus('enroll-completed', True)
         except Exception as e:
             self.EnrollStatus('enroll-failed', True)
@@ -187,9 +189,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.debug:
-        logging.basicConfig(level=logging.DEBUG)
+        level = logging.DEBUG
         usb.trace_enabled = True
         tls.trace_enabled = True
+    else:
+        level = logging.INFO
+
+    handler = logging.handlers.SysLogHandler(address = '/dev/log')
+    logging.basicConfig(level=level, handlers=[handler])
 
     backoff()
 
@@ -203,7 +210,7 @@ if __name__ == '__main__':
 
             init.open_devpath(*map(int, z.groups()))
     except RebootException:
-        print('Initialization ended up in rebooting the sensor. Normal exit.')
+        logging.debug('Initialization ended up in rebooting the sensor. Normal exit.')
         sys.exit(0)
 
     bus = dbus.SystemBus()
@@ -224,5 +231,15 @@ if __name__ == '__main__':
     # Kick off the open-fprintd if it was not started yet
     bus.get_object('net.reactivated.Fprint', '/net/reactivated/Fprint/Manager')
 
-    loop.run()
+    def die(x):
+        logging.info('Cought signal %d. Stopping...' % x)
+        loop.quit()
+
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, die, signal.SIGINT)
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, die, signal.SIGINT)
+    try:
+        loop.run()
+    except Exception as e:
+        logging.exception('Oops', e)
+        raise e
 

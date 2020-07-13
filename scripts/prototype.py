@@ -7,6 +7,7 @@ from validitysensor.sid import *
 from validitysensor.init import open as open9x
 from threading import Condition
 from time import sleep
+import logging
 import code
 
 #usb.trace_enabled = True
