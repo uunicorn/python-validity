@@ -101,7 +101,7 @@ class Device(dbus.service.Object):
                 usrid, subtype, hsh = sensor.identify(update_cb)
                 self.VerifyStatus('verify-match', True)
             except Exception as e:
-                logging.exception('Oops', e)
+                logging.exception(e)
                 self.VerifyStatus('verify-no-match', True)
 
         thread = Thread(target=run)
@@ -133,7 +133,7 @@ class Device(dbus.service.Object):
                 sensor.enroll(uid2identity(uid), 0xf5, update_cb) # TODO parse the finger name
                 self.EnrollStatus('enroll-completed', True)
             except Exception as e:
-                logging.exception('Oops', e)
+                logging.exception(e)
                 self.EnrollStatus('enroll-failed', True)
 
         thread = Thread(target=run)
@@ -236,6 +236,6 @@ if __name__ == '__main__':
     try:
         loop.run()
     except Exception as e:
-        logging.exception('Oops', e)
+        logging.exception(e)
         raise e
 
