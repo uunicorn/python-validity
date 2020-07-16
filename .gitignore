@@ -2,9 +2,8 @@ debian/tmp/
 debian/debhelper-build-stamp
 debian/python3-validity/
 debian/python3-validity.substvars
-debian/python3-validity.prerm.debhelper
-debian/python3-validity.postinst.debhelper
 debian/files
+debian/*.debhelper
 debian/.debhelper/
 
 __pycache__

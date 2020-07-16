@@ -6,7 +6,8 @@
 	dh $@ --with python3 --buildsystem=pybuild
 
 override_dh_installsystemd:
-	dh_installsystemd
+	dh_installsystemd --name=python3-validity
+	dh_installsystemd --name=python3-validity-suspend-restart
 
 
 override_dh_auto_install:
