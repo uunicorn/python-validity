@@ -3,10 +3,11 @@ from enum import Enum
 from hashlib import sha256
 import os.path
 import logging
+from usb import core as usb_core
 from .tls import tls
-from .usb import usb
+from .usb import usb, CancelledException
 from .db import db, subtype_to_string
-from .flash import write_enable, flush_changes, read_flash, erase_flash, write_flash_all, read_flash_all
+from .flash import write_enable, call_cleanups, read_flash, erase_flash, write_flash_all, read_flash_all
 from time import sleep
 from struct import pack, unpack
 from .table_types import SensorTypeInfo, SensorCaptureProg
@@ -190,14 +191,10 @@ class CaptureMode(Enum):
     IDENTIFY=2
     ENROLL=3
 
-class CancelledException(Exception):
-    pass
-
 class Sensor():
     calib_data=b''
 
     def open(self):
-        self.interrupt_cb = None
         self.device_info = identify_sensor()
 
         logging.info('Opening sensor: %s' % self.device_info.name)
@@ -625,58 +622,32 @@ class Sensor():
         self.save()
 
     def cancel(self):
-        cb=usb.interrupt_cb
-        if cb is not None:
-            cb(None)
+        usb.cancel = True
 
-    def capture(self, mode, complete_cb):
-        if usb.interrupt_cb is not None:
-            raise Exception('Wrong state for capture')
+    def capture(self, mode):
+        try:
+            assert_status(tls.app(self.build_cmd_02(mode)))
 
-        def next(cb):
-            if cb is None:
-                usb.interrupt_cb = None
-                return
-
-            def run(b):
-                try:
-                    if b is None:
-                        raise CancelledException()
-
-                    cb(b)
-                except Exception as e:
-                    usb.interrupt_cb = None
-                    tls.app(unhexlify('04')) # capture stop if still running, cleanup
-                    complete_cb(None, e)
-
-            usb.interrupt_cb = run
-
-
-        def wait_start(b):
+            # start
+            b = usb.wait_int()
             if b[0] != 0:
                 raise Exception('wait_start: Unexpected interrupt type %s' % hexlify(b).decode())
 
-            next(wait_finger)
-
-        def wait_finger(b):
-            if b[0] == 2:
-                next(wait_capture_complete)
-
-            # TODO: report status?
-
-        def wait_capture_complete(b):
-            if b[0] != 3:
-                raise Exception('wait_finger: Unexpected interrupt type %s' % hexlify(b).decode())
-
-            if b[2] & 4:
-                capture_complete()
-                return
+            # wait for finger
+            while True:
+                b = usb.wait_int()
+                if b[0] == 2:
+                    break;
             
-            # TODO: report status?
+            # wait capture complete
+            while True:
+                b = usb.wait_int()
+                if b[0] != 3:
+                    raise Exception('Unexpected interrupt type %s' % hexlify(b).decode())
 
-        def capture_complete():
-            next(None)
-
+                if b[2] & 4:
+                    break
+            
             res = get_prg_status2()
 
             assert_status(res)
@@ -693,28 +664,23 @@ class Sensor():
             if error != 0:
                 raise Exception('Scanning problem: %04x' % error)
 
-            complete_cb((x, y, w1, w2), None)
+            return (x, y, w1, w2)
 
-        next(wait_start)
+        finally:
+            tls.app(unhexlify('04')) # capture stop if still running, cleanup
 
-        assert_status(tls.app(self.build_cmd_02(mode)))
 
-    def enrollment_update_start(self, key, complete_cb):
-        if usb.interrupt_cb is not None:
-            raise Exception('Wrong state, sensor\'s busy')
-
-        def wait(b):
-            if b is None:
-                raise Exception('Cancelling while enrollment is being updated is not a good idea.')
-
-            usb.interrupt_cb = None
-            complete_cb(new_key, b)
-
-        usb.interrupt_cb = wait
-
+    def enrollment_update_start(self, key):
         rsp=tls.app(pack('<BLL', 0x68, key, 0))
         assert_status(rsp)
         new_key, = unpack('<L', rsp[2:])
+
+        usb.wait_int()
+
+        return new_key
+
+    def create_enrollment(self):
+        assert_status(tls.app(pack('<BL', 0x69, 1)))
 
     def enrollment_update_end(self):
         assert_status(tls.app(pack('<BL', 0x69, 0)))
@@ -722,58 +688,44 @@ class Sensor():
     # Generates interrupt
     def enrollment_update(self, prev):
         write_enable()
-        rsp=tls.app(b'\x6b' + prev)
-        assert_status(rsp)
-        flush_changes()
+        try:
+            rsp=tls.app(b'\x6b' + prev)
+            assert_status(rsp)
+        finally:
+            call_cleanups()
 
         return rsp[2:]
 
-    def append_new_image(self, prev, complete_cb):
-        if usb.interrupt_cb is not None:
-            raise Exception('Wrong state, sensor\'s busy')
-
-        def finished(b):
-            res = self.enrollment_update(prev)
-
-            l, res = res[:2], res[2:]
-            l, = unpack('<H', l)
-            if l != len(res):
-                raise Exception('Response size does not match %d != %d', l, len(res))
-
-            magic_len = 0x38 # hardcoded in the DLL
-            template = header = tid = None
-
-            while len(res) > 0:
-                tag, l = unpack('<HH', res[:4])
-
-                if tag == 0:
-                    template = res[:magic_len+l]
-                elif tag == 1:
-                    header = res[magic_len:magic_len+l]
-                elif tag == 3:
-                    tid = res[magic_len:magic_len+l]
-                else:
-                    logging.warning('Ignoring unknown tag %x' % tag)
-                    
-                res=res[magic_len+l:]
-
-            return (header, template, tid)
-
-        def wait(b):
-            if b is None:
-                raise Exception('Cancelling while enrollment is being updated is not a good idea.')
-
-            usb.interrupt_cb = None
-
-            try:
-                complete_cb(finished(b), None)
-            except Exception as e:
-                complete_cb(None, e)
-
-        usb.interrupt_cb = wait
-
-        # Start the work. Interrupt will be generated when it is finished.
+    def append_new_image(self, prev):
         self.enrollment_update(prev)
+        
+        usb.wait_int()
+
+        res = self.enrollment_update(prev)
+
+        l, res = res[:2], res[2:]
+        l, = unpack('<H', l)
+        if l != len(res):
+            raise Exception('Response size does not match %d != %d', l, len(res))
+
+        magic_len = 0x38 # hardcoded in the DLL
+        template = header = tid = None
+
+        while len(res) > 0:
+            tag, l = unpack('<HH', res[:4])
+
+            if tag == 0:
+                template = res[:magic_len+l]
+            elif tag == 1:
+                header = res[magic_len:magic_len+l]
+            elif tag == 3:
+                tid = res[magic_len:magic_len+l]
+            else:
+                logging.warning('Ignoring unknown tag %x' % tag)
+                
+            res=res[magic_len+l:]
+
+        return (header, template, tid)
         
 
     def make_finger_data(self, subtype, template, tid):
@@ -787,70 +739,51 @@ class Sensor():
 
         return tinfo
 
-    def enroll(self, identity, subtype, update_cb, complete_cb):
+    def enroll(self, identity, subtype, update_cb):
         def do_create_finger(final_template, tid):
+            tinfo = self.make_finger_data(subtype, final_template, tid)
+
+            usr=db.lookup_user(identity)
+            if usr == None:
+                usr = db.new_user(identity)
+            else:
+                usr = usr.dbid
+            
+            recid = db.new_finger(usr, tinfo)
+            usb.wait_int()
+
+            glow_end_scan()
+
+            return recid
+
+        key=0
+        template=b''
+        self.create_enrollment()
+        while True:
             try:
-                tinfo = self.make_finger_data(subtype, final_template, tid)
+                glow_start_scan()
+                self.capture(CaptureMode.ENROLL)
+                key = self.enrollment_update_start(key)
+                rsp = self.append_new_image(template)
+                header, template, tid = rsp
+                update_cb(header, None)
+                if tid:
+                    break
 
-                usr=db.lookup_user(identity)
-                if usr == None:
-                    usr = db.new_user(identity)
-                else:
-                    usr = usr.dbid
-                
-                recid = db.new_finger(usr, tinfo)
-
+            except usb_core.USBError as e:
+                raise e
+            except CancelledException as e:
                 glow_end_scan()
-
-                complete_cb(recid, None)
+                raise e
             except Exception as e:
-                complete_cb(None, e)
+                print(e)
+                update_cb(None, e)
+                # sleep, so we don't end up in a busy loop spaming the sensor with requests in case of unrecoverable error
+            finally:
+                self.enrollment_update_end()
 
-
-        def start_iteration(key=0, template=b''):
-            def wrap_cb(f):
-                def r(res, ex):
-                    try:
-                        f(res, ex)
-                    except CancelledException as e:
-                        glow_end_scan()
-                        complete_cb(None, e)
-                    except Exception as e:
-                        update_cb(None, e)
-                        # sleep, so we don't end up in a busy loop spaming the sensor with requests in case of unrecoverable error
-                        sleep(1)
-                        self.enrollment_update_end()
-                        start_iteration(key, template)
-
-                return r
-
-            def capture_cb(res, e):
-                if e is not None: raise e
-                def enrollment_update_start_cb(new_key, b):
-                    def append_new_image_cb(rsp, e):
-                        if e is not None: raise e
-
-                        self.enrollment_update_end()
-
-                        header, new_template, tid = rsp
-                        update_cb(header, None)
-
-                        if tid:
-                            do_create_finger(new_template, tid)
-                        else:
-                            start_iteration(new_key, new_template)
-                    ## end of append_new_image_cb
-
-                    self.append_new_image(template, wrap_cb(append_new_image_cb))
-                ## end of enrollment_update_start_cb
-
-                self.enrollment_update_start(key, wrap_cb(enrollment_update_start_cb))
-            ## end of capture_cb
-
-            glow_start_scan()
-            self.capture(CaptureMode.ENROLL, wrap_cb(capture_cb))
-
-        start_iteration()
+        self.enrollment_update_end() # done twice for some reason
+        return do_create_finger(template, tid)
 
     def parse_dict(self, x):
         rc={}
@@ -861,74 +794,56 @@ class Sensor():
 
         return rc
 
-    def match_finger(self, complete_cb):
-        if usb.interrupt_cb is not None:
-            raise Exception('Wrong state for capture')
+    def match_finger(self):
+        try:
+            stg_id=0 # match against any storage
+            usr_id=0 # match against any user
+            cmd=pack('<BBBHHHHH', 0x5e, 2, 0xff, stg_id, usr_id, 1, 0,0)
+            rsp=tls.app(cmd)
+            assert_status(rsp)
 
-        def wait(b):
-            if b is None:
-                raise Exception('Cancelling while finger match is running is not a good idea.')
+            b = usb.wait_int()
+            if b[0] != 3:
+                raise Exception('Finger not recognized: %s' % hexlify(b).decode())
 
-            try:
-                if b[0] != 3:
-                    raise Exception('Finger not recognized: %s' % hexlify(b).decode())
+            # get results
+            rsp = tls.app(unhexlify('6000000000'))
+            assert_status(rsp)
+            rsp = rsp[2:]
 
-                # get results
-                rsp = tls.app(unhexlify('6000000000'))
-                assert_status(rsp)
-                rsp = rsp[2:]
+            (l,), rsp = unpack('<H', rsp[:2]), rsp[2:]
+            if l != len(rsp):
+                raise Exception('Response size does not match')
 
-                (l,), rsp = unpack('<H', rsp[:2]), rsp[2:]
-                if l != len(rsp):
-                    raise Exception('Response size does not match')
+            rsp=self.parse_dict(rsp)
 
-                rsp=self.parse_dict(rsp)
+            usrid, subtype, hsh = rsp[1], rsp[3], rsp[4]
+            usrid, = unpack('<L', usrid)
+            subtype, = unpack('<H', subtype)
 
-                usrid, subtype, hsh = rsp[1], rsp[3], rsp[4]
-                usrid, = unpack('<L', usrid)
-                subtype, = unpack('<H', subtype)
-
-                complete_cb((usrid, subtype, hsh), None)
-            except Exception as e:
-                complete_cb(None, e)
-            finally:
-                usb.interrupt_cb = None
-                # cleanup, ignore any errors
-                tls.app(unhexlify('6200000000'))
-
-        usb.interrupt_cb = wait
-
-        stg_id=0 # match against any storage
-        usr_id=0 # match against any user
-        cmd=pack('<BBBHHHHH', 0x5e, 2, 0xff, stg_id, usr_id, 1, 0,0)
-        rsp=tls.app(cmd)
-        assert_status(rsp)
+            return (usrid, subtype, hsh)
+        finally:
+            # cleanup, ignore any errors
+            tls.app(unhexlify('6200000000'))
 
         
-    def identify(self, update_cb, complete_cb):
-        def start():
+    def identify(self, update_cb):
+        while True:
             try:
                 glow_start_scan()
-                self.capture(CaptureMode.IDENTIFY, capture_cb)
-            except Exception as e:
-                # failed to start the capture, pointless to retry
-                glow_end_scan()
-                complete_cb(None, e)
-
-        def capture_cb(_, e):
-            try:
-                if e is not None: raise e
-                self.match_finger(complete_cb)
+                self.capture(CaptureMode.IDENTIFY)
+                break
+            except usb_core.USBError as e:
+                raise e
             except CancelledException as e:
                 glow_end_scan()
-                complete_cb(None, e)
+                raise e
             except Exception as e:
                 # Capture failed, retry
                 update_cb(e)
                 sleep(1)
-                start()
 
-        start()
+        return self.match_finger()
 
     def get_finger_blobs(self, usrid, subtype):
         usr = db.get_user(usrid)

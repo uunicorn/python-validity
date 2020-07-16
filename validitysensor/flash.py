@@ -91,13 +91,19 @@ def get_fw_info(partition):
 def write_enable():
     assert_status(tls.cmd(db_write_enable))
 
-def flush_changes():
-    assert_status(tls.cmd(b'\x1a'))
+def call_cleanups():
+    rsp = tls.cmd(b'\x1a')
+    err = unpack('<H', rsp[:2])[0]
+    if err == 0x0491: # Nothing to commit
+        return # don't throw an exception, just ignore
+    assert_status(rsp)
 
 def erase_flash(partition):
     assert_status(tls.cmd(db_write_enable))
-    assert_status(tls.cmd(pack('<BB', 0x3f, partition)))
-    flush_changes()
+    try:
+        assert_status(tls.cmd(pack('<BB', 0x3f, partition)))
+    finally:
+        call_cleanups()
 
 def read_flash(partition, addr, size):
     cmd = pack('<BBBHLL', 0x40, partition, 1, 0, addr, size)
@@ -110,9 +116,11 @@ def read_flash(partition, addr, size):
 def write_flash(partition, addr, buf):
     tls.cmd(db_write_enable)
     cmd = pack('<BBBHLL', 0x41, partition, 1, 0, addr, len(buf)) + buf
-    rsp = tls.cmd(cmd)
-    assert_status(rsp)
-    flush_changes()
+    try:
+        rsp = tls.cmd(cmd)
+        assert_status(rsp)
+    finally:
+        call_cleanups()
 
 def write_flash_all(partition, ptr, buf):
     bs = 0x1000

@@ -6,7 +6,7 @@ from .util import assert_status
 from struct import pack, unpack
 from binascii import hexlify, unhexlify
 from .blobs import db_write_enable
-from .flash import flush_changes
+from .flash import call_cleanups
 from .sid import *
 
 class UserStorage():
@@ -125,6 +125,18 @@ class DbRecord():
             
 
 class Db():
+    class Info():
+        def __init__(self, total, used, free, records, roots):
+            self.total = total # partition size
+            self.used = used # used (not deleted)
+            self.free = free # unallocated space
+            self.records = records # total number, including deleted
+            self.roots = roots
+
+        def __repr__(self):
+            return 'Db.Info(total=%d, used=%d, free=%d, records=%d, roots=%s)' % (
+                    self.total, self.used, self.free, self.records, repr(self.roots))
+
     def get_user_storage(self, dbid=0, name=''):
         name=name.encode()
 
@@ -175,7 +187,7 @@ class Db():
         rsp = rsp[14:]
         rec.children=[]
         for i in range(0, cnt):
-            dbid, typ = unpack('<HH', rsp[i:i+4])
+            dbid, typ = unpack('<HH', rsp[i*4:i*4+4])
             rec.children += [{ 'dbid': dbid, 'type': typ }]
 
         return rec
@@ -183,14 +195,27 @@ class Db():
     def del_record(self, dbid):
         assert_status(tls.cmd(pack('<BH', 0x48, dbid)))
 
+    def db_info(self):
+        rsp = tls.cmd(b'\x45')
+        assert_status(rsp)
+        rsp = rsp[2:]
+
+        unknown1, unknown0, total, used, free, records, nroots = unpack('<LLLLLHH', rsp[:0x18])
+        # Seems to always be unknown1 == 1, unknown0 == 0
+        rsp = rsp[0x18:]
+        roots = [unpack('<H', rsp[i*2:i*2+2])[0] for i in range(0, nroots)]
+
+        return Db.Info(total, used, free, records, roots)
 
     def new_record(self, parent, typ, storage, data):
-        assert_status(tls.cmd(b'\x45'))
+        self.db_info() # TODO check free space, compact the partition when out of storage
         assert_status(tls.cmd(db_write_enable))
-        rsp = tls.cmd(pack('<BHHHH', 0x47, parent, typ, storage, len(data)) + data)
-        assert_status(rsp)
-        recid, = unpack('<H', rsp[2:])
-        flush_changes()
+        try:
+            rsp = tls.cmd(pack('<BHHHH', 0x47, parent, typ, storage, len(data)) + data)
+            assert_status(rsp)
+            recid, = unpack('<H', rsp[2:])
+        finally:
+            call_cleanups()
         return recid
 
     def new_user(self, identity):
@@ -212,6 +237,17 @@ class Db():
         data = pack('<HH', 1, len(data)) + data
         rec = self.new_record(parent, 0x8, stg.dbid, data)
         return rec
+
+    def dump_raw(self, root=3, depth=0):
+        rec = self.get_record_value(root)
+        val = hexlify(rec.value).decode()
+        if len(val) > 80:
+            val = val[:80] + '...'
+        print('%s%d (type %d) %s' % ('  '*depth, rec.dbid, rec.type, val))
+
+        rec = self.get_record_children(root)
+        for c in rec.children:
+            self.dump_raw(c['dbid'], depth+1)
 
     def dump_all(self):
         stg = self.get_user_storage(name='StgWindsor')

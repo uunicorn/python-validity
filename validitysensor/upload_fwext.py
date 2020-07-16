@@ -7,7 +7,7 @@ from os.path import basename
 from .tls import tls
 from .usb import usb
 from .sensor import reboot, write_hw_reg32, read_hw_reg32, identify_sensor
-from .flash import flush_changes, read_flash, erase_flash, write_flash_all, write_fw_signature, get_fw_info
+from .flash import read_flash, erase_flash, write_flash_all, write_fw_signature, get_fw_info
 from .util import assert_status
 
 firmware_home='/usr/share/python-validity'
@@ -55,7 +55,6 @@ def upload_fwext(fw_path=None):
     fwext=fwext[fwext.index(b'\x1a')+1:]
     fwext, signature = fwext[:-0x100], fwext[-0x100:]
 
-    #flush_changes()
     write_flash_all(2, 0, fwext)
     write_fw_signature(2, signature)
 

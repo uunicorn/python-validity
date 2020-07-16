@@ -13,8 +13,8 @@ from cryptography.hazmat.backends import default_backend
 
 from .tls import tls, hs_key, crt_hardcoded
 from .usb import usb
-from .flash import write_flash, erase_flash, flush_changes, PartitionInfo, get_flash_info
-from .sensor import reboot
+from .flash import write_flash, erase_flash, call_cleanups, PartitionInfo, get_flash_info
+from .sensor import reboot, RomInfo
 from .util import assert_status, unhex
 from .blobs import reset_blob
 
@@ -121,13 +121,14 @@ def init_flash():
 
     partition_flash(info, flash_layout_hardcoded, client_public)
 
-    rsp=usb.cmd(unhex('01'))
-    assert_status(rsp)
-    # ^ get device info, contains firmware version which is needed to lookup pubkey for server cert validation
+    RomInfo.get()
+    # ^ TODO: use the firmware version which to lookup pubkey for server cert validation
 
-    rsp=usb.cmd(unhex('50'))
-    assert_status(rsp)
-    flush_changes()
+    try:
+        rsp=usb.cmd(unhex('50'))
+        assert_status(rsp)
+    finally:
+        call_cleanups()
 
     rsp=rsp[2:]
     l,=unpack('<L', rsp[:4])

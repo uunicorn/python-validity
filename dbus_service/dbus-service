@@ -10,6 +10,7 @@ import dbus
 import dbus.mainloop.glib
 import dbus.service
 from binascii import hexlify, unhexlify
+from threading import Thread
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 from gi.repository import GLib
 import logging
@@ -92,37 +93,27 @@ class Device(dbus.service.Object):
     def VerifyStart(self, user, finger):
         logging.debug('In VerifyStart %s' % finger)
 
-        def complete_cb(rsp, e):
-            if e is not None:
-                self.VerifyStatus('verify-no-match', True)
-            else:
-                self.VerifyStatus('verify-match', True)
-                usrid, subtype, hsh = rsp
-                # TODO pass down the user DB id
-                # check that a correct finger was identified
-
         def update_cb(e):
             self.VerifyStatus('verify-retry-scan', False)
 
-        sensor.identify(update_cb, complete_cb)
+        def run():
+            try:
+                usrid, subtype, hsh = sensor.identify(update_cb)
+                self.VerifyStatus('verify-match', True)
+            except Exception as e:
+                logging.exception('Oops', e)
+                self.VerifyStatus('verify-no-match', True)
+
+        thread = Thread(target=run)
+        thread.daemon = True
+        thread.start()
+        
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME,
                          in_signature='',
                          out_signature='')
     def Cancel(self):
         sensor.cancel()
-
-    def do_enroll(self, finger_name, uid):
-        # it is pointless to try and remember username passed in claim as Gnome does not seem to be passing anything useful anyway
-        try:
-            # TODO hardcode the username and finger for now
-            z=enroll(uid2identity(uid), 0xf5)
-            logging.debug('Enroll was successfull')
-            self.EnrollStatus('enroll-completed', True)
-        except Exception as e:
-            self.EnrollStatus('enroll-failed', True)
-            #loop.quit();
-            raise e
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME,
                          in_signature='ss',
@@ -137,13 +128,18 @@ class Device(dbus.service.Object):
             else:
                 self.EnrollStatus('enroll-stage-passed', False)
 
-        def complete_cb(rsp, e):
-            if e is not None:
-                self.EnrollStatus('enroll-failed', True)
-            else:
+        def run():
+            try:
+                sensor.enroll(uid2identity(uid), 0xf5, update_cb) # TODO parse the finger name
                 self.EnrollStatus('enroll-completed', True)
+            except Exception as e:
+                logging.exception('Oops', e)
+                self.EnrollStatus('enroll-failed', True)
 
-        sensor.enroll(uid2identity(uid), 0xf5, update_cb, complete_cb) # TODO parse the finger name
+        thread = Thread(target=run)
+        thread.daemon = True
+        thread.start()
+        
 
     @dbus.service.signal(dbus_interface=INTERFACE_NAME, signature='sb')
     def VerifyStatus(self, result, done):
