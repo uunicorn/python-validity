@@ -24,8 +24,11 @@ $ sudo systemctl stop python3-validity
 $ sudo validity-sensors-firmware
 $ sudo python3 /usr/share/python-validity/playground/factory-reset.py
 
-# At this point you may or may find the device busy, depending on
-# how systemctl plays along. Kill offending processes if necessary.
+# At some of the above points you may get a 'device busy' error,
+# depending on how systemctl plays along. Kill offending processes if
+# necessary, or re-run the systemctl stop python3-validity command, 
+# in case it has automatically been restarted, or or kill other
+# offending processes.
 
 $ sudo systemctl start python3-validity
 $ fprintd-enroll
