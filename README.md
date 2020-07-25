@@ -13,6 +13,50 @@ $ sudo apt install open-fprintd fprintd-clients python3-validity
 $ fprintd-enroll
 ```
 
+### Error situations
+If `fprintd-enroll` returns with `list_devices failed:`, you can check
+the logs of the `python3-validity` daemon using `$ sudo systemctl status python3-validity`.
+If it's not running, you can enable and/or start it by substituting `status` with `enable` or `start`.
+
+It `systemctl status python3-validity` complains about errors on startup, you may need to factory-reset the fingerprint chip. Do that like so:
+```
+$ sudo systemctl stop python3-validity
+$ sudo validity-sensors-firmware
+$ sudo python3 /usr/share/python-validity/playground/factory-reset.py
+
+# At some of the above points you may get a 'device busy' error,
+# depending on how systemctl plays along. Kill offending processes if
+# necessary, or re-run the systemctl stop python3-validity command, 
+# in case it has automatically been restarted, or or kill other
+# offending processes.
+
+$ sudo systemctl start python3-validity
+$ fprintd-enroll
+```
+
+For even more error procedures, check [this Arch comment thread](https://aur.archlinux.org/packages/python-validity/#comment-755904) or [this python-validity bug comment thread](https://github.com/uunicorn/python-validity/issues/3).
+
+## Enabling fingerprint for system authentication
+To enable fingerprint login, if it doesn't come automatically, run
+```
+$ sudo pam-auth-update
+```
+and use the space-bar to enable fingerprint authentication.
+The change will take effect immediately. At this point, the fingerprint
+will be tried first, and only if that fails or times out will you see
+a password prompt. Take note of the led-stripe above the fingerprint
+sensor to see whether it is active.
+
+### The actual change from pam-auth-update
+The above mentioned command `$ sudo pam-auth-update` simply makes a small modification to /etc/pam.d/common-auth:
+
+```
+# In /etc/pam.d/common-auth, the following line is added, and the next line changed.
+# The end result (apart from other things that may be in the file) is this:
+auth  [success=2 default=ignore]  pam_fprintd.so max_tries=1 timeout=10 # debug
+auth  [success=1 default=ignore]  pam_unix.so nullok_secure try_first_pass
+```
+
 ## Playground
 
 This package contains a set of scripts you can use to do a low-level debugging of the sensor protocol.
