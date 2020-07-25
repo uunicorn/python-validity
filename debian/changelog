@@ -1,3 +1,11 @@
+python-validity (0.8~ppa1) bionic; urgency=medium
+
+  * Rollback the async changes to enroll()/identify()
+  * Call the cleanup command even when underlying command has failed()
+  * Add a service to restart python-validity on suspend/resume
+
+ -- uunicorn <viktor.dragomiretskyy@gmail.com>  Fri, 17 Jul 2020 00:25:13 +1200
+
 python-validity (0.7~ppa1) bionic; urgency=medium
 
   * Use single instance of a systemd service (at least for now)
