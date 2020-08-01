@@ -520,11 +520,11 @@ class Tls():
         self.trace('y=0x%x' % y)
         self.trace('d=0x%x' % d)
 
-        # Someone has reported that x and y are 0 after pairing with the latest windows driver,
-        # for compatibility we could derive x and y with a following call:
-        #ec.derive_private_key(d, ec.SECP256R1(), backend=crypto_backend)
+        # Someone has reported that x and y are 0 after pairing with the latest windows driver.
+        #pub_key = ec.EllipticCurvePublicNumbers(x, y, ec.SECP256R1())
+        #self.priv_key = ec.EllipticCurvePrivateNumbers(d, pub_key).private_key(crypto_backend)
 
-        pub_key = ec.EllipticCurvePublicNumbers(x, y, ec.SECP256R1())
-        self.priv_key = ec.EllipticCurvePrivateNumbers(d, pub_key).private_key(crypto_backend)
+        self.priv_key = ec.derive_private_key(d, ec.SECP256R1(), backend=crypto_backend)
+
 
 tls = Tls(usb)
