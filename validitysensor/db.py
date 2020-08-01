@@ -1,10 +1,6 @@
-
-import logging
-from .util import unhex
 from .tls import tls
 from .util import assert_status
-from struct import pack, unpack
-from binascii import hexlify, unhexlify
+from binascii import hexlify
 from .blobs import db_write_enable
 from .flash import call_cleanups
 from .sid import *

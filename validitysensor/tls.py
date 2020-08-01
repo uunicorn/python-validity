@@ -1,6 +1,4 @@
-import re
 import hmac
-import sys
 import os
 import pickle
 import logging
@@ -14,8 +12,8 @@ from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
 from cryptography.hazmat.primitives import hashes
 from hashlib import sha256
 
-from .usb import unhex, usb
-from .util import assert_status
+from .util import unhex
+from .usb import usb
 
 
 password_hardcoded=unhexlify('717cd72d0962bc4a2846138dbb2c24192512a76407065f383846139d4bec2033')
@@ -289,7 +287,7 @@ class Tls():
 
     def handle_server_hello_done(self, p):
         if p != b'':
-            raise Exeception('Not expecting any body for "server hello done" pkt: %s' % hexlify(p).decode())
+            raise Exception('Not expecting any body for "server hello done" pkt: %s' % hexlify(p).decode())
 
     def handle_finish(self, b):
         hs_hash = self.handshake_hash.copy().digest()

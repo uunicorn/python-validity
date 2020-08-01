@@ -1,7 +1,5 @@
-
 from .tls import tls
 from struct import pack, unpack
-from binascii import hexlify, unhexlify
 from .util import assert_status, unhex
 from .blobs import db_write_enable
 from .hw_tables import flash_ic_table_lookup

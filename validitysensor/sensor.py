@@ -6,7 +6,7 @@ import logging
 from usb import core as usb_core
 from .tls import tls
 from .usb import usb, CancelledException
-from .db import db, subtype_to_string
+from .db import db
 from .flash import write_enable, call_cleanups, read_flash, erase_flash, write_flash_all, read_flash_all
 from time import sleep
 from struct import pack, unpack
@@ -70,11 +70,12 @@ def factory_reset():
     reboot()
 
 class RomInfo():
-    def get():
+    @classmethod
+    def get(cls):
         rsp=tls.cmd(b'\x01')
         assert_status(rsp)
         rsp=rsp[2:]
-        return RomInfo(*unpack('<LLBBxBxxxB', rsp[0:0x10]))
+        return cls(*unpack('<LLBBxBxxxB', rsp[0:0x10]))
 
     def __init__(self, timestamp, build, major, minor, product, u1):
         self.timestamp, self.build, self.major, self.minor, self.product, self.u1 = timestamp, build, major, minor, product, u1

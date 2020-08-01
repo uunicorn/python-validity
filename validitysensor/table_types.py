@@ -4,9 +4,10 @@ from binascii import hexlify, unhexlify
 class SensorTypeInfo:
     table=[]
 
-    def get_by_type(sensor_type):
+    @classmethod
+    def get_by_type(cls, sensor_type):
         from . import generated_tables
-        for i in SensorTypeInfo.table:
+        for i in cls.table:
             if i.sensor_type == sensor_type:
                 return i
 
@@ -46,7 +47,8 @@ def metric(i, rominfo):
 class SensorCaptureProg:
     table=[]
 
-    def get(rominfo, sensor_type, a0, a1):
+    @classmethod
+    def get(cls, rominfo, sensor_type, a0, a1):
         from . import generated_tables
 
         maximum = 0

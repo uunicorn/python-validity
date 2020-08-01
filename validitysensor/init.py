@@ -1,6 +1,5 @@
 
 import atexit
-import signal
 import logging
 
 from validitysensor.usb import usb
