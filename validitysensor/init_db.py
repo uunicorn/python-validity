@@ -12,13 +12,9 @@ def machine_id_rec_value(b):
     b = b + b'\0' * (0x94 - len(b))
     return pack('<HH', 0x102, len(b)) + b # 0x102 = Machine ID/GUID?
 
+# This function is unused. It simply describes the Windows driver behavior.
 # TODO: make this GUID unique!
-def init_db(machine_guid='e7260876-58db-4d27-8c40-8d13110d6a71'):
-    stg = db.get_user_storage(name='StgWindsor')
-    if stg == None:
-        logging.info('Creating a new user storage object')
-        db.new_user_storate()
-
+def init_machine_guid(machine_guid='e7260876-58db-4d27-8c40-8d13110d6a71'):
     rc = db.get_storage_data()
 
     if rc == []:
@@ -34,4 +30,12 @@ def init_db(machine_guid='e7260876-58db-4d27-8c40-8d13110d6a71'):
         b=rc[4:4+l]
         b=b.decode('utf-16le')
         raise Exception('Machine GUID does not match the DB flash ownership record (%s).' % b)
+
+def init_db():
+    stg = db.get_user_storage(name='StgWindsor')
+    if stg == None:
+        logging.info('Creating a new user storage object')
+        db.new_user_storate()
+
+    #init_machine_guid()
 
