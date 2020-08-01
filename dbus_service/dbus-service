@@ -74,24 +74,13 @@ class Device(dbus.service.Object):
 
         db.del_record(usr.dbid)
 
-    def do_scan(self):
-        if self.capturing:
-            return
-
-        try:
-            self.capturing = True
-            z=identify()
-        except Exception as e:
-            #loop.quit();
-            raise e
-        finally:
-            self.capturing = False
-
     @dbus.service.method(dbus_interface=INTERFACE_NAME,
                          in_signature='ss',
                          out_signature='')
     def VerifyStart(self, user, finger):
         logging.debug('In VerifyStart %s' % finger)
+
+        self.VerifyFingerSelected('any')
 
         def update_cb(e):
             self.VerifyStatus('verify-retry-scan', False)
@@ -144,6 +133,10 @@ class Device(dbus.service.Object):
     @dbus.service.signal(dbus_interface=INTERFACE_NAME, signature='sb')
     def VerifyStatus(self, result, done):
         logging.debug('VerifyStatus')
+
+    @dbus.service.signal(dbus_interface=INTERFACE_NAME, signature='s')
+    def VerifyFingerSelected(self, finger):
+        logging.debug('VerifyFingerSelected')
 
     @dbus.service.signal(dbus_interface=INTERFACE_NAME, signature='sb')
     def EnrollStatus(self, result, done):
