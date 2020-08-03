@@ -57,6 +57,24 @@ auth  [success=2 default=ignore]  pam_fprintd.so max_tries=1 timeout=10 # debug
 auth  [success=1 default=ignore]  pam_unix.so nullok_secure try_first_pass
 ```
 
+## Windows interoperability
+
+Note: This section is likely only relevant if you will be dual booting.
+
+To be able to use the same set of fingerprints for Windows and Linux, you first
+need to extract the Windows user IDs (known as SIDs). To do this, start Windows,
+start `cmd.exe` and run `wmic useraccount get name,sid`. This will provide a
+list of all users and the corresponding SIDs.
+
+You can then create a mapping from the Linux user names (as written in the
+first `:`-separated field of `/etc/passwd`). This mapping is defined in
+`/etc/python-validity/dbus-service.yaml`. For example:
+```yaml
+user_to_sid:
+    "myusername": "S-1-5-21-1234567890-1234567890-1234567890-1001"
+    "someotheruser": "S-1-5-21-1234567890-1234567890-1234567890-1003"
+```
+
 ## Playground
 
 This package contains a set of scripts you can use to do a low-level debugging of the sensor protocol.

@@ -1,0 +1,8 @@
+# Mapping for users
+# Add mappings from a user to a SID to use the same fingerprints as enrolled by
+# Windows. By default, mappings will be generated from the numerical UID if not
+# found here. This is fine if you are not dual booting and want to share
+# mappings with Windows.
+user_to_sid:
+    # Example:
+    #"username": "S-1-5-21-1234567890-1234567890-1234567890-1234"

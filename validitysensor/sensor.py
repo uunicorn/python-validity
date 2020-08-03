@@ -1,4 +1,4 @@
-
+import typing
 from enum import Enum
 from hashlib import sha256
 import os.path
@@ -795,7 +795,7 @@ class Sensor():
 
         return rc
 
-    def match_finger(self):
+    def match_finger(self) -> typing.Tuple[int, int, bytes]:
         try:
             stg_id=0 # match against any storage
             usr_id=0 # match against any user
