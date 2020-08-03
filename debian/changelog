@@ -1,3 +1,12 @@
+python-validity (0.9~ppa1) bionic; urgency=medium
+
+  * Actually check which user was passed to VerifyStart
+  * Don't touch the Machine GUID record (windows co-existance)
+  * Notify the framework when a finger is selected
+  * Infer a point on a curve from the private part (windows co-existance)
+
+ -- uunicorn <viktor.dragomiretskyy@gmail.com>  Mon, 03 Aug 2020 23:59:30 +1200
+
 python-validity (0.8~ppa1) bionic; urgency=medium
 
   * Rollback the async changes to enroll()/identify()
