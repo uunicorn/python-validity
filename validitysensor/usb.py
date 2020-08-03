@@ -23,7 +23,6 @@ class Usb():
     def __init__(self):
         self.interrupt_cb = None
         self.trace_enabled = False
-        self.quit = None
         self.dev = None
         self.cancel = False
 
@@ -124,29 +123,6 @@ class Usb():
                         raise CancelledException()
                 else:
                     raise e
-                
-
-    def int_thread(self):
-        try:
-            while True:
-                resp = self.dev.read(131, 1024, timeout=0)
-                resp = bytes(resp)
-                self.trace('<int< %s' % hexlify(resp).decode())
-                cb=self.interrupt_cb
-                if cb is None:
-                    logging.warning('Ignoring spurious interrupt: %s' % hexlify(resp).decode())
-                else:
-                    try:
-                        cb(resp)
-                    except Exception as e:
-                        logging.warning('Exception on the interrupt thread: %s' % e)
-        except USBError as e:
-            self.trace('<int< Exception on interrupt thread: %s' % repr(e))
-            if self.quit != None:
-                self.quit(e)
-        finally:
-            self.trace('<int< Interrupt thread is dead')
-
 
     def trace(self, s):
         if self.trace_enabled:

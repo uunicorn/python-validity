@@ -4,11 +4,13 @@ import signal
 import argparse
 import re
 import os
+import pwd
 import sys
 import time
 import dbus
 import dbus.mainloop.glib
 import dbus.service
+from usb import core as usb_core
 from binascii import hexlify, unhexlify
 from threading import Thread
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
@@ -22,7 +24,6 @@ from validitysensor.usb import usb
 from validitysensor.sid import sid_from_string
 from validitysensor.db import subtype_to_string, db
 from validitysensor.sensor import sensor, reboot, RebootException
-import pwd
 
 GLib.threads_init()
 
@@ -30,8 +31,11 @@ INTERFACE_NAME='io.github.uunicorn.Fprint.Device'
 
 loop = GLib.MainLoop()
 
-usb.quit = lambda e: loop.quit()
+class NoEnrolledPrints(dbus.DBusException):
+    _dbus_error_name = 'net.reactivated.Fprint.Error.NoEnrolledPrints'
 
+    def __init__(self):
+        super().__init__('No enrolled prints found')
 
 def uid2identity(uid):
     sidstr='S-1-5-21-111111111-1111111111-1111111111-%d' % uid
@@ -78,7 +82,13 @@ class Device(dbus.service.Object):
                          in_signature='ss',
                          out_signature='')
     def VerifyStart(self, user, finger):
-        logging.debug('In VerifyStart %s' % finger)
+        logging.debug('In VerifyStart for %s, %s' % (user, finger))
+
+        pw = pwd.getpwnam(user)
+        usr = db.lookup_user(uid2identity(pw.pw_uid))
+
+        if usr == None:
+            raise NoEnrolledPrints()
 
         self.VerifyFingerSelected('any')
 
@@ -87,8 +97,16 @@ class Device(dbus.service.Object):
 
         def run():
             try:
+                # TODO: pass down the user db record id and implement a proper Sensor.verify() method
                 usrid, subtype, hsh = sensor.identify(update_cb)
-                self.VerifyStatus('verify-match', True)
+                if usr.dbid == usrid:
+                    self.VerifyStatus('verify-match', True)
+                else:
+                    self.VerifyStatus('verify-no-match', True)
+            except usb_core.USBError as e:
+                logging.exception(e)
+                self.VerifyStatus('verify-no-match', True)
+                loop.quit()
             except Exception as e:
                 logging.exception(e)
                 self.VerifyStatus('verify-no-match', True)
@@ -121,6 +139,10 @@ class Device(dbus.service.Object):
             try:
                 sensor.enroll(uid2identity(uid), 0xf5, update_cb) # TODO parse the finger name
                 self.EnrollStatus('enroll-completed', True)
+            except usb_core.USBError as e:
+                logging.exception(e)
+                self.EnrollStatus('enroll-failed', True)
+                loop.quit()
             except Exception as e:
                 logging.exception(e)
                 self.EnrollStatus('enroll-failed', True)
