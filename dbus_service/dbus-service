@@ -27,7 +27,7 @@ from validitysensor import init
 from validitysensor.tls import tls
 from validitysensor.usb import usb
 from validitysensor.sid import sid_from_string
-from validitysensor.db import subtype_to_string, db
+from validitysensor.db import subtype_to_string, db, SidIdentity, User
 from validitysensor.sensor import sensor, RebootException
 
 GLib.threads_init()
@@ -49,19 +49,19 @@ class Device(dbus.service.Object):
         dbus.service.Object.__init__(self, bus_name, '/io/github/uunicorn/Fprint/Device')
         self.config = config
 
-    def user2identity(self, user: str, uid: int):
+    def user2identity(self, user: str) -> SidIdentity:
         """Compute UID to SID mapping"""
+        pw = pwd.getpwnam(user)
+        uid = pw.pw_uid
         if user in self.config['user_to_sid']:
             sidstr = self.config['user_to_sid'][user]
         else:
             sidstr = 'S-1-5-21-111111111-1111111111-1111111111-%d' % uid
         return sid_from_string(sidstr)
 
-    def _get_user_sid(self, user: str):
-        """Resolve user name to UID and SID"""
-        pw = pwd.getpwnam(user)
-        uid = pw.pw_uid
-        return db.lookup_user(self.user2identity(user, uid))
+    def user2record(self, user: str) -> User:
+        """Resolve user name to database object"""
+        return db.lookup_user(self.user2identity(user))
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME,
                          in_signature="s",
@@ -70,7 +70,7 @@ class Device(dbus.service.Object):
         try:
             logging.debug('In ListEnrolledFingers %s' % user)
 
-            usr = self._get_user_sid(user)
+            usr = self.user2record(user)
 
             if usr is None:
                 return []
@@ -86,7 +86,7 @@ class Device(dbus.service.Object):
                          out_signature='')
     def DeleteEnrolledFingers(self, user):
         logging.debug('In DeleteEnrolledFingers %s' % user)
-        usr = self._get_user_sid(user)
+        usr = self.user2record(user)
 
         if usr is None:
             return
@@ -99,7 +99,7 @@ class Device(dbus.service.Object):
     def VerifyStart(self, user, finger):
         logging.debug('In VerifyStart for %s, %s' % (user, finger))
 
-        usr = self._get_user_sid(user)
+        usr = self.user2record(user)
 
         if usr is None:
             raise NoEnrolledPrints()
@@ -141,7 +141,7 @@ class Device(dbus.service.Object):
     def EnrollStart(self, user, finger_name):
         logging.debug('In EnrollStart %s for %s' % (finger_name, user))
 
-        usr = self._get_user_sid(user)
+        usr = self.user2identity(user)
 
         def update_cb(rsp, e):
             if e is not None:

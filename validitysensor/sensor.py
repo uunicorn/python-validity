@@ -6,7 +6,7 @@ import logging
 from usb import core as usb_core
 from .tls import tls
 from .usb import usb, CancelledException
-from .db import db
+from .db import db, SidIdentity
 from .flash import write_enable, call_cleanups, read_flash, erase_flash, write_flash_all, read_flash_all
 from time import sleep
 from struct import pack, unpack
@@ -740,7 +740,9 @@ class Sensor():
 
         return tinfo
 
-    def enroll(self, identity, subtype, update_cb):
+    # TODO: Better typing information needed.
+    def enroll(self, identity: SidIdentity, subtype: int,
+               update_cb: typing.Callable[[typing.Any, typing.Optional[Exception]], None]):
         def do_create_finger(final_template, tid):
             tinfo = self.make_finger_data(subtype, final_template, tid)
 
