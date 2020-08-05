@@ -1,7 +1,7 @@
 import logging
 import errno
 import usb.core as ucore
-from binascii import *
+from binascii import hexlify, unhexlify
 from .util import assert_status
 from struct import unpack
 from usb.core import USBError

@@ -5,7 +5,9 @@ import os
 from binascii import unhexlify
 from enum import Enum
 from validitysensor.flash import read_flash
-from validitysensor.sensor import *
+from validitysensor.sensor import glow_start_scan, glow_end_scan
+from validitysensor.util import assert_status
+from validitysensor.tls import tls
 from validitysensor import init
 from time import sleep
 from usb import core as usb_core

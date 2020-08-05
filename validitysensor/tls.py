@@ -3,7 +3,7 @@ import os
 import pickle
 import logging
 from struct import pack, unpack
-from binascii import *
+from binascii import hexlify, unhexlify
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
