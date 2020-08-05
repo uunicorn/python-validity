@@ -1,7 +1,7 @@
 
 import os
 from struct import pack, unpack
-from binascii import hexlify, unhexlify
+from binascii import unhexlify
 import logging
 
 from hashlib import sha256

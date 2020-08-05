@@ -1,4 +1,4 @@
-
+import typing
 from enum import Enum
 from hashlib import sha256
 import os.path
@@ -6,7 +6,7 @@ import logging
 from usb import core as usb_core
 from .tls import tls
 from .usb import usb, CancelledException
-from .db import db, subtype_to_string
+from .db import db, SidIdentity
 from .flash import write_enable, call_cleanups, read_flash, erase_flash, write_flash_all, read_flash_all
 from time import sleep
 from struct import pack, unpack
@@ -70,11 +70,12 @@ def factory_reset():
     reboot()
 
 class RomInfo():
-    def get():
+    @classmethod
+    def get(cls):
         rsp=tls.cmd(b'\x01')
         assert_status(rsp)
         rsp=rsp[2:]
-        return RomInfo(*unpack('<LLBBxBxxxB', rsp[0:0x10]))
+        return cls(*unpack('<LLBBxBxxxB', rsp[0:0x10]))
 
     def __init__(self, timestamp, build, major, minor, product, u1):
         self.timestamp, self.build, self.major, self.minor, self.product, self.u1 = timestamp, build, major, minor, product, u1
@@ -739,7 +740,9 @@ class Sensor():
 
         return tinfo
 
-    def enroll(self, identity, subtype, update_cb):
+    # TODO: Better typing information needed.
+    def enroll(self, identity: SidIdentity, subtype: int,
+               update_cb: typing.Callable[[typing.Any, typing.Optional[Exception]], None]):
         def do_create_finger(final_template, tid):
             tinfo = self.make_finger_data(subtype, final_template, tid)
 
@@ -794,7 +797,7 @@ class Sensor():
 
         return rc
 
-    def match_finger(self):
+    def match_finger(self) -> typing.Tuple[int, int, bytes]:
         try:
             stg_id=0 # match against any storage
             usr_id=0 # match against any user

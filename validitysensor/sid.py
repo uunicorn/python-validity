@@ -1,8 +1,9 @@
 
 from struct import unpack, pack
+import typing
 
 class SidIdentity():
-    def __init__(self, revision, auth, subauth):
+    def __init__(self, revision: int, auth: int, subauth: typing.Sequence[int]):
         self.revision = revision
         self.auth = auth
         self.subauth = subauth
@@ -17,7 +18,7 @@ class SidIdentity():
     def __repr__(self):
         return 'S-%d-%d-%s' % (self.revision, self.auth, '-'.join(map(str, self.subauth)))
 
-def sid_from_bytes(b):
+def sid_from_bytes(b: bytes):
     revision = b[0]
     subcnt = b[1]
     auth = 0
@@ -30,7 +31,7 @@ def sid_from_bytes(b):
 
     return SidIdentity(revision, auth, subauth)
 
-def sid_from_string(s):
+def sid_from_string(s: str):
     parts = s.split('-')
 
     if parts[0] != 'S':

@@ -12,7 +12,8 @@ setup(name='python-validity',
     ],
     install_requires=[
         'cryptography >= 2.1.4',
-        'pyusb >= 1.0.2'
+        'pyusb >= 1.0.0',
+        'pyyaml >= 3.12'
     ],
     data_files=[
         ('share/dbus-1/system.d/', ['dbus_service/io.github.uunicorn.Fprint.conf']),

@@ -15,6 +15,7 @@ Depends: ${python3:Depends},
  ${misc:Depends},
  python3-dbus,
  python3-usb,
+ python3-yaml,
  dbus,
  open-fprintd (>= 0.2~),
  innoextract (>= 1.6~)

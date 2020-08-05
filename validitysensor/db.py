@@ -1,10 +1,8 @@
+import typing
 
-import logging
-from .util import unhex
 from .tls import tls
 from .util import assert_status
-from struct import pack, unpack
-from binascii import hexlify, unhexlify
+from binascii import hexlify
 from .blobs import db_write_enable
 from .flash import call_cleanups
 from .sid import *
@@ -27,7 +25,7 @@ class User():
     def __repr__(self):
         return '<User: dbid=%04x identity=%s fingers=%s>' % (self.dbid, repr(self.identity), repr(self.fingers))
 
-def subtype_to_string(s):
+def subtype_to_string(s: int):
     if s < 0xf5 or s > 0xfe:
         return 'Unknown'
 
@@ -70,7 +68,7 @@ def parse_identity(b):
 
     raise Exception('Don''t know how to handle identity type %d' % t)
 
-def parse_user(rsp):
+def parse_user(rsp: bytes):
     assert_status(rsp[:2])
     rsp=rsp[2:]
 
@@ -92,7 +90,7 @@ def parse_user(rsp):
 
     return user
 
-def identity_to_bytes(identity):
+def identity_to_bytes(identity: str):
     if isinstance(identity, SidIdentity):
         b=identity.to_bytes()
         b = pack('<LL', 3, len(b)) + b
@@ -156,7 +154,7 @@ class Db():
     def get_user(self, dbid):
         return parse_user(tls.cmd(pack('<BHHH', 0x4a, dbid, 0, 0)))
 
-    def lookup_user(self, identity):
+    def lookup_user(self, identity: str) -> typing.Optional[User]:
         stg = self.get_user_storage(name='StgWindsor')
         data = identity_to_bytes(identity)
         
