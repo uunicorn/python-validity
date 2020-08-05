@@ -10,7 +10,6 @@ from validitysensor import init
 from time import sleep
 from usb import core as usb_core
 
-
 if __name__ == "__main__":
     if os.geteuid() != 0:
         raise Exception('This script needs to be executed as root')

@@ -1,5 +1,6 @@
 from enum import Enum, auto
 
+
 class Blobs(Enum):
     init_hardcoded = auto()
     init_hardcoded_clean_slate = auto()
@@ -21,6 +22,7 @@ def __load_blob(blob):
 
     globals()[blob] = getattr(blobs, blob)
     return globals()[blob]
+
 
 for p in dir(Blobs):
     if isinstance(getattr(Blobs, p), Blobs):

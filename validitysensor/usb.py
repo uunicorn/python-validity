@@ -1,4 +1,3 @@
-
 import logging
 import errno
 import usb.core as ucore
@@ -8,14 +7,16 @@ from struct import unpack
 from usb.core import USBError
 from .blobs import init_hardcoded, init_hardcoded_clean_slate
 
-supported_devices=[
+supported_devices = [
     (0x138a, 0x0090),
     (0x138a, 0x0097),
     (0x06cb, 0x009a),
 ]
 
+
 class CancelledException(Exception):
     pass
+
 
 class Usb():
     def __init__(self):
@@ -28,6 +29,7 @@ class Usb():
         if vendor is not None and product is not None:
             dev = ucore.find(idVendor=vendor, idProduct=product)
         else:
+
             def match(d):
                 return (d.idVendor, d.idProduct) in supported_devices
 
@@ -38,7 +40,7 @@ class Usb():
     def open_devpath(self, busnum, address):
         def match(d):
             return d.bus == busnum and d.address == address
-            
+
         dev = ucore.find(custom_match=match)
 
         self.open_dev(dev)
@@ -65,16 +67,16 @@ class Usb():
         #self.dev.set_configuration()
 
         # TODO analyse responses, detect hardware type
-        assert_status(self.cmd(unhexlify('01'))) # RomInfo.get()
+        assert_status(self.cmd(unhexlify('01')))  # RomInfo.get()
         assert_status(self.cmd(unhexlify('19')))
 
         # 43 -- get partition header(?) (02 -- fwext partition)
         # c28c745a in response is a FwextBuildtime = 0x5A748CC2
-        rsp=self.cmd(unhexlify('4302')) # get_fw_info()
+        rsp = self.cmd(unhexlify('4302'))  # get_fw_info()
 
         assert_status(self.cmd(init_hardcoded))
-        
-        (err,), rsp = unpack('<H', rsp[:2]), rsp[2:]
+
+        (err, ), rsp = unpack('<H', rsp[:2]), rsp[2:]
         if err != 0:
             # fwext is not loaded
             logging.info('Clean slate')
@@ -87,14 +89,14 @@ class Usb():
                 return 0
         self.trace('>cmd> %s' % hexlify(out).decode())
         self.dev.write(1, out)
-        resp = self.dev.read(129, 100*1024)
+        resp = self.dev.read(129, 100 * 1024)
         resp = bytes(resp)
         self.trace('<cmd< %s' % hexlify(resp).decode())
         return resp
 
     def read_82(self):
         try:
-            resp = self.dev.read(130, 1024*1024, timeout=10000)
+            resp = self.dev.read(130, 1024 * 1024, timeout=10000)
             resp = bytes(resp)
             self.trace('<130< %s' % hexlify(resp).decode())
             return resp
@@ -126,4 +128,5 @@ class Usb():
         if self.trace_enabled:
             logging.debug(s)
 
-usb=Usb()
+
+usb = Usb()

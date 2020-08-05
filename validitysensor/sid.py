@@ -1,6 +1,6 @@
-
 from struct import unpack, pack
 import typing
+
 
 class SidIdentity():
     def __init__(self, revision: int, auth: int, subauth: typing.Sequence[int]):
@@ -9,7 +9,7 @@ class SidIdentity():
         self.subauth = subauth
 
     def to_bytes(self):
-        b=pack('>BBHL', self.revision, len(self.subauth), self.auth >> 32, self.auth & 0xffffffff)
+        b = pack('>BBHL', self.revision, len(self.subauth), self.auth >> 32, self.auth & 0xffffffff)
         for i in self.subauth:
             b += pack('<L', i)
 
@@ -17,6 +17,7 @@ class SidIdentity():
 
     def __repr__(self):
         return 'S-%d-%d-%s' % (self.revision, self.auth, '-'.join(map(str, self.subauth)))
+
 
 def sid_from_bytes(b: bytes):
     revision = b[0]
@@ -26,10 +27,11 @@ def sid_from_bytes(b: bytes):
     for i in b[2:8]:
         auth <<= 8
         auth |= i
-    
-    subauth=unpack('<%dL' % subcnt, b[8:])
+
+    subauth = unpack('<%dL' % subcnt, b[8:])
 
     return SidIdentity(revision, auth, subauth)
+
 
 def sid_from_string(s: str):
     parts = s.split('-')

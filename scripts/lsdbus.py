@@ -16,10 +16,10 @@ ls = o.ListNames()
 for n in ls:
     if n[0] != ':':
         continue
-    
+
     pid = o.GetConnectionUnixProcessID(n)
 
     with open('/proc/%d/cmdline' % pid) as f:
-        s=f.read()
-        s=s.split('\0')
+        s = f.read()
+        s = s.split('\0')
         print('%-10s %-5d %s' % (n, pid, ' '.join(s)))

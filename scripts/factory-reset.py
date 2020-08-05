@@ -1,4 +1,3 @@
-
 from validitysensor.usb import usb
 from validitysensor.sensor import factory_reset, RebootException
 
