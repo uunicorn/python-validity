@@ -1,13 +1,7 @@
 #!/usr/bin/env python3
 
-import argparse
-import re
-import dbus
 import dbus.mainloop.glib
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
-from gi.repository import GObject, GLib
-
-import pwd
 
 bus = dbus.SystemBus()
 o = bus.get_object('org.freedesktop.DBus', '/org/freedesktop/DBus')

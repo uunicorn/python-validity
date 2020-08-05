@@ -1,21 +1,23 @@
+import logging
+import os.path
 import typing
+from binascii import hexlify, unhexlify
 from enum import Enum
 from hashlib import sha256
-import os.path
-import logging
+from struct import pack, unpack
+from time import sleep
+
 from usb import core as usb_core
-from .tls import tls
-from .usb import usb, CancelledException
+
+from . import timeslot as prg
+from .blobs import reset_blob
 from .db import db, SidIdentity
 from .flash import write_enable, call_cleanups, read_flash, erase_flash, write_flash_all, read_flash_all
-from time import sleep
-from struct import pack, unpack
-from .table_types import SensorTypeInfo, SensorCaptureProg
-from binascii import hexlify, unhexlify
-from .util import assert_status, unhex
 from .hw_tables import dev_info_lookup
-from .blobs import reset_blob
-from . import timeslot as prg
+from .table_types import SensorTypeInfo, SensorCaptureProg
+from .tls import tls
+from .usb import usb, CancelledException
+from .util import assert_status, unhex
 
 # TODO: this should be specific to an individual device (system may have more than one sensor)
 calib_data_path = '/usr/share/python-validity/calib-data.bin'

@@ -1,5 +1,5 @@
-from struct import unpack, pack
 import typing
+from struct import unpack, pack
 
 
 class SidIdentity():

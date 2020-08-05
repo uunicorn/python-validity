@@ -1,10 +1,10 @@
-from time import ctime
 import logging
 from os.path import basename
+from time import ctime
 
-from .usb import usb
-from .sensor import reboot, write_hw_reg32, read_hw_reg32, identify_sensor
 from .flash import write_flash_all, write_fw_signature, get_fw_info
+from .sensor import reboot, write_hw_reg32, read_hw_reg32, identify_sensor
+from .usb import usb
 
 firmware_home = '/usr/share/python-validity'
 

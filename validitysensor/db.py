@@ -1,11 +1,10 @@
-import typing
-
-from .tls import tls
-from .util import assert_status
 from binascii import hexlify
+
 from .blobs import db_write_enable
 from .flash import call_cleanups
 from .sid import *
+from .tls import tls
+from .util import assert_status
 from .winbio_constants import finger_names
 
 

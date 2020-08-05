@@ -1,6 +1,6 @@
 import re
-from struct import unpack
 from binascii import unhexlify
+from struct import unpack
 
 
 def assert_status(b):

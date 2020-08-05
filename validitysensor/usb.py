@@ -1,11 +1,13 @@
-import logging
 import errno
-import usb.core as ucore
+import logging
 from binascii import hexlify, unhexlify
-from .util import assert_status
 from struct import unpack
+
+import usb.core as ucore
 from usb.core import USBError
+
 from .blobs import init_hardcoded, init_hardcoded_clean_slate
+from .util import assert_status
 
 supported_devices = [
     (0x138a, 0x0090),

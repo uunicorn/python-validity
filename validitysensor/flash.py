@@ -1,8 +1,9 @@
-from .tls import tls
 from struct import pack, unpack
-from .util import assert_status, unhex
+
 from .blobs import db_write_enable
 from .hw_tables import flash_ic_table_lookup
+from .tls import tls
+from .util import assert_status, unhex
 
 
 class FlashInfo():

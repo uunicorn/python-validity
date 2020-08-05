@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import argparse
+import logging
+import logging.handlers
 import os
 import pwd
 import re
@@ -16,21 +18,18 @@ import dbus
 import dbus.mainloop.glib
 import dbus.service
 import yaml
+from gi.repository import GLib
 from usb import core as usb_core
 
-dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
-from gi.repository import GLib
-import logging
-import logging.handlers
-
 from validitysensor import init
-from validitysensor.tls import tls
-from validitysensor.usb import usb
-from validitysensor.sid import sid_from_string
 from validitysensor.db import subtype_to_string, db, SidIdentity, User
 from validitysensor.sensor import sensor, RebootException
+from validitysensor.sid import sid_from_string
+from validitysensor.tls import tls
+from validitysensor.usb import usb
 from validitysensor.winbio_constants import finger_ids
 
+dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 GLib.threads_init()
 
 INTERFACE_NAME = 'io.github.uunicorn.Fprint.Device'

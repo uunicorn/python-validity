@@ -20,14 +20,13 @@
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import urllib.request
-import shutil
+from enum import Enum
 
-from enum import Enum, auto
-from time import sleep
 from usb import core as usb_core
 
 python_validity_data = '/usr/share/python-validity/'

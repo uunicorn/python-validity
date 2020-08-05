@@ -1,13 +1,13 @@
 import atexit
 import logging
 
-from validitysensor.usb import usb
-from validitysensor.tls import tls
-from validitysensor.sensor import sensor, reboot, RebootException
 from validitysensor.flash import read_tls_flash
-from validitysensor.init_flash import init_flash
-from validitysensor.upload_fwext import upload_fwext
 from validitysensor.init_db import init_db
+from validitysensor.init_flash import init_flash
+from validitysensor.sensor import sensor, reboot, RebootException
+from validitysensor.tls import tls
+from validitysensor.upload_fwext import upload_fwext
+from validitysensor.usb import usb
 
 
 def close():

@@ -1,5 +1,5 @@
-from struct import pack, unpack
 import logging
+from struct import pack, unpack
 
 from .db import db
 

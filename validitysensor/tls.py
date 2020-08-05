@@ -1,19 +1,19 @@
 import hmac
+import logging
 import os
 import pickle
-import logging
-from struct import pack, unpack
 from binascii import hexlify, unhexlify
+from hashlib import sha256
+from struct import pack, unpack
 
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
-from cryptography.hazmat.primitives import hashes
-from hashlib import sha256
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-from .util import unhex
 from .usb import usb
+from .util import unhex
 
 password_hardcoded = unhexlify('717cd72d0962bc4a2846138dbb2c24192512a76407065f383846139d4bec2033')
 gwk_sign_hardcoded = unhexlify('3a4c76b76a97981d1274247e166610e77f4d9c9d07d3c728e532916bdd28b454')

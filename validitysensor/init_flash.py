@@ -1,21 +1,21 @@
-import os
-from struct import pack, unpack
-from binascii import unhexlify
-import logging
-
-from hashlib import sha256
 import hmac
+import logging
+import os
+from binascii import unhexlify
+from hashlib import sha256
+from struct import pack, unpack
+
+from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.backends import default_backend
 
-from .tls import tls, hs_key, crt_hardcoded
-from .usb import usb
+from .blobs import reset_blob
 from .flash import write_flash, erase_flash, call_cleanups, PartitionInfo, get_flash_info
 from .sensor import reboot, RomInfo
+from .tls import tls, hs_key, crt_hardcoded
+from .usb import usb
 from .util import assert_status, unhex
-from .blobs import reset_blob
 
 flash_layout_hardcoded = [
     #             id  type  access  offset       size
