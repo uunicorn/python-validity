@@ -28,7 +28,7 @@ def close():
 def open_common():
     init_flash()
     usb.send_init()
-    tls.parseTlsFlash(read_tls_flash())
+    tls.parse_tls_flash(read_tls_flash())
     tls.open()
     upload_fwext()
     sensor.open()

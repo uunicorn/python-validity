@@ -157,7 +157,7 @@ def init_flash():
     erase_flash(4)
 
     # Persist certs and keys on cert partition.
-    write_flash(1, 0, tls.makeTlsFlash())
+    write_flash(1, 0, tls.make_tls_flash())
 
     # Reboot.
     # The device will disconnect and our service will be started by udev as soon as it is connected again.

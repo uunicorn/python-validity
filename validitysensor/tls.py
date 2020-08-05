@@ -86,7 +86,7 @@ def unpad(b):
 
 
 # TODO assert the right state transitions
-class Tls():
+class Tls:
     def __init__(self, usb):
         self.usb = usb
         self.reset()
@@ -407,7 +407,7 @@ class Tls():
     def make_ext(self, id, b):
         return pack('>H', id) + with_2bytes_size(b)
 
-    def parseTlsFlash(self, reply):
+    def parse_tls_flash(self, reply):
         while len(reply) > 0:
             hdr, reply = reply[:4], reply[4:]
             hs, reply = reply[:0x20], reply[0x20:]
@@ -440,20 +440,20 @@ class Tls():
             else:
                 self.trace('unhandled block id %04x (%d bytes): %s' % (id, sz, hexlify(body)))
 
-    def makeTlsFlashBlock(self, id, body):
+    def make_tls_flash_block(self, id, body):
         m = sha256()
         m.update(body)
         hdr = pack('<HH', id, len(body))
         return hdr + m.digest() + body
 
-    def makeTlsFlash(self):
-        b = self.makeTlsFlashBlock(0, b'\0')
-        b += self.makeTlsFlashBlock(4, self.priv_blob)
-        b += self.makeTlsFlashBlock(3, self.tls_cert)
-        b += self.makeTlsFlashBlock(5, crt_hardcoded)
-        b += self.makeTlsFlashBlock(1, b'\0' * 0x100)
-        b += self.makeTlsFlashBlock(2, b'\0' * 0x100)
-        b += self.makeTlsFlashBlock(6, self.ecdh_blob)
+    def make_tls_flash(self):
+        b = self.make_tls_flash_block(0, b'\0')
+        b += self.make_tls_flash_block(4, self.priv_blob)
+        b += self.make_tls_flash_block(3, self.tls_cert)
+        b += self.make_tls_flash_block(5, crt_hardcoded)
+        b += self.make_tls_flash_block(1, b'\0' * 0x100)
+        b += self.make_tls_flash_block(2, b'\0' * 0x100)
+        b += self.make_tls_flash_block(6, self.ecdh_blob)
         b += b'\xff' * (0x1000 - len(b))
         return b
 

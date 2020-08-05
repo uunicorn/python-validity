@@ -100,37 +100,37 @@ insn_to_string = [
 
 def decode_insn(b):
     if b[0] == 0:
-        return (0, 1)
+        return 0, 1
     elif b[0] == 1:
-        return (1, 1)
+        return 1, 1
     elif b[0] == 2:
-        return (2, 1)
+        return 2, 1
     elif b[0] == 3:
-        return (3, 1)
+        return 3, 1
     elif b[0] == 4:
-        return (4, 1)
+        return 4, 1
     elif b[0] == 5:
-        return (5, 2, b[1])
+        return 5, 2, b[1]
     elif b[0] == 6:
-        return (6, 2, b[1])
+        return 6, 2, b[1]
     elif b[0] == 7:
-        return (7, 2, 0x100 if b[1] == 0 else b[1])
+        return 7, 2, 0x100 if b[1] == 0 else b[1]
     elif b[0] & 0xfe == 8:
-        return (8, 2, (b[0] & 1) << 8 | b[1])
+        return 8, 2, (b[0] & 1) << 8 | b[1]
     elif b[0] & 0xfe == 0xa:
-        return (9, 2, (b[0] & 1) << 8 | b[1])
+        return 9, 2, (b[0] & 1) << 8 | b[1]
     elif b[0] & 0xfc == 0xc:
-        return (10, 1, b[0] & 3)
+        return 10, 1, b[0] & 3
     elif b[0] & 0xf8 == 0x10:
-        return (11, 3, b[0] & 7, b[1] << 2, 0x100 if b[2] == 0 else b[2])
+        return 11, 3, b[0] & 7, b[1] << 2, 0x100 if b[2] == 0 else b[2]
     elif b[0] & 0xe0 == 0x20:
-        return (12, 1, b[0] & 0x1f)  # TODO check how features are converted to op args
+        return 12, 1, b[0] & 0x1f  # TODO check how features are converted to op args
     elif b[0] & 0xc0 == 0x40:
-        return (13, 3, (b[0] & 0x3f) * 4 + 0x80002000, b[1] | (b[2] << 8))
+        return 13, 3, (b[0] & 0x3f) * 4 + 0x80002000, b[1] | (b[2] << 8)
     elif b[0] & 0xc0 == 0x80:
-        return (14, 1, (b[0] & 0x38) >> 3, b[0] & 7)
+        return 14, 1, (b[0] & 0x38) >> 3, b[0] & 7
     elif b[0] & 0xc0 == 0xc0:
-        return (15, 2, (b[0] & 0x38) >> 3, b[0] & 7, 0x100 if b[1] == 0 else b[1])
+        return 15, 2, (b[0] & 0x38) >> 3, b[0] & 7, 0x100 if b[1] == 0 else b[1]
     else:
         raise Exception('Unhandled instruction %02x' % b)
 
@@ -158,7 +158,7 @@ def find_nth_insn(b, opcode, n):
         if op == opcode:
             n -= 1
             if n == 0:
-                return (pc, b[:sz])
+                return pc, b[:sz]
 
         b = b[sz:]
         pc += sz
@@ -177,7 +177,7 @@ def find_nth_regwrite(b, reg_addr, n):
             if addr == reg_addr:
                 n -= 1
                 if n == 0:
-                    return (pc, b[:sz])
+                    return pc, b[:sz]
 
         b = b[sz:]
         pc += sz

@@ -32,8 +32,8 @@ def init_machine_guid(machine_guid='e7260876-58db-4d27-8c40-8d13110d6a71'):
 
 def init_db():
     stg = db.get_user_storage(name='StgWindsor')
-    if stg == None:
+    if stg is None:
         logging.info('Creating a new user storage object')
         db.new_user_storate()
 
-    #init_machine_guid()
+    # init_machine_guid()

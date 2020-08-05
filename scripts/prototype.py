@@ -3,8 +3,8 @@ from binascii import hexlify
 from validitysensor.sensor import sensor
 
 
-#usb.trace_enabled = True
-#tls.trace_enabled = True
+# usb.trace_enabled = True
+# tls.trace_enabled = True
 
 
 def identify():

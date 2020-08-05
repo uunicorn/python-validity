@@ -8,7 +8,7 @@ from .util import assert_status
 from .winbio_constants import finger_names
 
 
-class UserStorage():
+class UserStorage:
     def __init__(self, dbid, name):
         self.dbid = dbid
         self.name = name
@@ -19,7 +19,7 @@ class UserStorage():
             self.name), repr(self.users))
 
 
-class User():
+class User:
     def __init__(self, dbid, identity):
         self.dbid = dbid
         self.identity = identity
@@ -112,7 +112,7 @@ def identity_to_bytes(identity: str):
         raise Exception('Don' 't know how to handle identity %s' % repr(identity))
 
 
-class DbRecord():
+class DbRecord:
     def __init__(self):
         self.dbid = 0
         self.type = 0
@@ -125,8 +125,8 @@ class DbRecord():
             self.dbid, self.type, self.storage, repr(self.value), repr(self.children))
 
 
-class Db():
-    class Info():
+class Db:
+    class Info:
         def __init__(self, total, used, free, records, roots):
             self.total = total  # partition size
             self.used = used  # used (not deleted)

@@ -2,7 +2,7 @@ import typing
 from struct import unpack, pack
 
 
-class SidIdentity():
+class SidIdentity:
     def __init__(self, revision: int, auth: int, subauth: typing.Sequence[int]):
         self.revision = revision
         self.auth = auth

@@ -13,4 +13,4 @@ def assert_status(b):
 
 
 def unhex(x):
-    return unhexlify(re.sub('\W', '', x))
+    return unhexlify(re.sub(r'\W', '', x))

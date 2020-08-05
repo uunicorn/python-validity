@@ -20,7 +20,7 @@ class CancelledException(Exception):
     pass
 
 
-class Usb():
+class Usb:
     def __init__(self):
         self.interrupt_cb = None
         self.trace_enabled = False
@@ -66,7 +66,7 @@ class Usb():
         return self.dev
 
     def send_init(self):
-        #self.dev.set_configuration()
+        # self.dev.set_configuration()
 
         # TODO analyse responses, detect hardware type
         assert_status(self.cmd(unhexlify('01')))  # RomInfo.get()

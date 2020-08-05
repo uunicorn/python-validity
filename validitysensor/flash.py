@@ -6,9 +6,10 @@ from .tls import tls
 from .util import assert_status, unhex
 
 
-class FlashInfo():
+class FlashInfo:
     def __init__(self, ic, blocks, unknown0, blocksize, unknown1, partitions):
-        self.ic, self.blocks, self.unknown0, self.blocksize, self.unknown1, self.partitions = ic, blocks, unknown0, blocksize, unknown1, partitions
+        self.ic, self.blocks, self.unknown0, self.blocksize, self.unknown1, self.partitions = \
+            ic, blocks, unknown0, blocksize, unknown1, partitions
 
     def __repr__(self):
         return 'FlashInfo(%s, 0x%x, 0x%x, 0x%x, 0x%x, %s)' % (repr(
@@ -20,7 +21,7 @@ class FlashInfo():
 # access lvl:
 # 2 -- write only
 # 7 -- can read/write even without TLS
-class PartitionInfo():
+class PartitionInfo:
     def __init__(self, id, type, access_lvl, offset, size):
         self.id, self.type, self.access_lvl, self.offset, self.size = id, type, access_lvl, offset, size
 
@@ -39,7 +40,7 @@ def get_flash_info():
 
     ic = flash_ic_table_lookup(jid0, jid1, blocks * blocksize)
 
-    if ic == None:
+    if ic is None:
         raise Exception('Unknown flash IC. JEDEC id=%x:%x, size=%dx%d' %
                         (jid0, jid1, blocks, blocksize))
 
@@ -63,7 +64,7 @@ def get_flash_info():
 #      0200 2377     0000    0100    802f0000
 #      0200 6637     0100    0c00    f0220200
 #      0100 2556     0000    0100    60040000
-class ModuleInfo():
+class ModuleInfo:
     def __init__(self, type, subtype, major, minor, size):
         self.type, self.subtype, self.major, self.minor, self.size = type, subtype, major, minor, size
 
@@ -72,7 +73,7 @@ class ModuleInfo():
                                                            self.minor, self.size)
 
 
-class FirmwareInfo():
+class FirmwareInfo:
     def __init__(self, major, minor, buildtime, modules):
         self.major, self.minor, self.buildtime, self.modules = major, minor, buildtime, modules
 

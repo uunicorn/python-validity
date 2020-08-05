@@ -87,7 +87,7 @@ def factory_reset():
     reboot()
 
 
-class RomInfo():
+class RomInfo:
     @classmethod
     def get(cls):
         rsp = tls.cmd(b'\x01')
@@ -173,10 +173,10 @@ def bitpack(b):
     # convert back to bytes
     b = b.to_bytes((u * l + 7) // 8, 'little')
 
-    return (u, m, b)
+    return u, m, b
 
 
-class Line():
+class Line:
     mask = None
     flags = None
     data = None
@@ -217,7 +217,7 @@ class CaptureMode(Enum):
     ENROLL = 3
 
 
-class Sensor():
+class Sensor:
     calib_data = b''
 
     def open(self):
@@ -417,7 +417,7 @@ class Sensor():
                     tst = self.patch_timeslot_again(tst)
                 c[1] = self.get_key_line() + tst[self.type_info.line_width:]
 
-        #---------------- Reply Configuration ---------------
+        # ---------------- Reply Configuration ---------------
         chunks += [[0x17, b'']]
 
         if mode == CaptureMode.IDENTIFY:
@@ -448,7 +448,7 @@ class Sensor():
                 0x2e, unhexlify('0200180023000000700070004d010000a0008c003c32321e3c0a0202')
             ]]
 
-        #---------------- Interleave ---------------
+        # ---------------- Interleave ---------------
         chunks += [[0x44, pack('<L', 1)]]
 
         lines = []
@@ -494,14 +494,14 @@ class Sensor():
             if pad > 0:
                 l.data += b'\0' * (4 - pad)
 
-        #---------------- Line Update ---------------
+        # ---------------- Line Update ---------------
         line_update = pack('<L', len(lines))
         line_update += b''.join([pack('<LL', l.mask, l.flags) for l in lines])
 
         line_update += b''.join([l.data for l in lines if ((l.flags & 0x00f00000) >> 0x14) <= 1])
         chunks += [[0x30, line_update]]
 
-        #---------------- Line Update Transform ---------------
+        # ---------------- Line Update Transform ---------------
         update_transform = b''.join([
             pack('<BBH', l.v0, l.v1, l.v2) + l.data for l in lines
             if ((l.flags & 0x00f00000) >> 0x14) > 1
@@ -525,7 +525,7 @@ class Sensor():
                     tst = self.patch_timeslot_again(tst)
                 c[1] = tst
 
-        #---------------- Reply Configuration ---------------
+        # ---------------- Reply Configuration ---------------
         chunks += [[0x17, b'']]
 
         if mode == CaptureMode.IDENTIFY:
@@ -728,7 +728,7 @@ class Sensor():
             if error != 0:
                 raise Exception('Scanning problem: %04x' % error)
 
-            return (x, y, w1, w2)
+            return x, y, w1, w2
 
         finally:
             tls.app(unhexlify('04'))  # capture stop if still running, cleanup
@@ -788,7 +788,7 @@ class Sensor():
 
             res = res[magic_len + l:]
 
-        return (header, template, tid)
+        return header, template, tid
 
     def make_finger_data(self, subtype, template, tid):
         template = pack('<HH', 1, len(template)) + template
@@ -808,7 +808,7 @@ class Sensor():
             tinfo = self.make_finger_data(subtype, final_template, tid)
 
             usr = db.lookup_user(identity)
-            if usr == None:
+            if usr is None:
                 usr = db.new_user(identity)
             else:
                 usr = usr.dbid
@@ -885,7 +885,7 @@ class Sensor():
             usrid, = unpack('<L', usrid)
             subtype, = unpack('<H', subtype)
 
-            return (usrid, subtype, hsh)
+            return usrid, subtype, hsh
         finally:
             # cleanup, ignore any errors
             tls.app(unhexlify('6200000000'))

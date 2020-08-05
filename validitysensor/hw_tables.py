@@ -1,4 +1,4 @@
-class DeviceInfo():
+class DeviceInfo:
     def __init__(self, major, type, version, version_mask, name):
         self.major, self.type, self.version, self.version_mask, self.name = major, type, version, version_mask, name
 
@@ -445,7 +445,7 @@ def dev_info_lookup(major, ver):
     return fuzzy_match
 
 
-class FlashIcInfo():
+class FlashIcInfo:
     def __init__(self, name, size, f18, jid0, jid1, f1b, f1c, f1e, secror_size, sector_erase_cmd,
                  f25, f26):
         self.name, self.size, self.f18, self.jid0, self.jid1, self.f1b, self.f1c, self.f1e, self.secror_size, self.sector_erase_cmd, self.f25, self.f26 = name, size, f18, jid0, jid1, f1b, f1c, f1e, secror_size, sector_erase_cmd, f25, f26

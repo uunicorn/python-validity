@@ -23,7 +23,7 @@ def default_fwext_name():
 
 def upload_fwext(fw_path=None):
     fwi = get_fw_info(2)
-    if fwi != None:
+    if fwi is not None:
         logging.info('Detected firmware version %d.%d (%s))' %
                      (fwi.major, fwi.minor, ctime(fwi.buildtime)))
         return
@@ -56,7 +56,7 @@ def upload_fwext(fw_path=None):
     write_fw_signature(2, signature)
 
     fwi = get_fw_info(2)
-    if fwi == None:
+    if fwi is None:
         raise Exception('No firmware detected')
 
     logging.info('Loaded FWExt version %d.%d (%s), %d modules' %
