@@ -2,6 +2,7 @@ import errno
 import logging
 from binascii import hexlify, unhexlify
 from struct import unpack
+import typing
 
 import usb.core as ucore
 from usb.core import USBError
@@ -22,9 +23,8 @@ class CancelledException(Exception):
 
 class Usb:
     def __init__(self):
-        self.interrupt_cb = None
         self.trace_enabled = False
-        self.dev = None
+        self.dev: typing.Optional[ucore.Device] = None
         self.cancel = False
 
     def open(self, vendor=None, product=None):
@@ -39,7 +39,7 @@ class Usb:
 
         self.open_dev(dev)
 
-    def open_devpath(self, busnum, address):
+    def open_devpath(self, busnum: int, address: int):
         def match(d):
             return d.bus == busnum and d.address == address
 
@@ -47,7 +47,7 @@ class Usb:
 
         self.open_dev(dev)
 
-    def open_dev(self, dev):
+    def open_dev(self, dev: ucore.Device):
         if dev is None:
             raise Exception('No matching devices found')
 
@@ -84,7 +84,7 @@ class Usb:
             logging.info('Clean slate')
             self.cmd(init_hardcoded_clean_slate)
 
-    def cmd(self, out):
+    def cmd(self, out: typing.Union[bytes, typing.Callable[[], bytes]]):
         if callable(out):
             out = out()
             if not out:
@@ -126,7 +126,7 @@ class Usb:
                 else:
                     raise e
 
-    def trace(self, s):
+    def trace(self, s: str):
         if self.trace_enabled:
             logging.debug(s)
 

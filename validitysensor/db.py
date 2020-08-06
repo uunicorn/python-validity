@@ -1,15 +1,17 @@
 from binascii import hexlify
+from struct import pack, unpack
+import typing
 
 from .blobs import db_write_enable
 from .flash import call_cleanups
-from .sid import *
+from .sid import SidIdentity, sid_from_bytes
 from .tls import tls
 from .util import assert_status
 from .winbio_constants import finger_names
 
 
 class UserStorage:
-    def __init__(self, dbid, name):
+    def __init__(self, dbid: int, name: str):
         self.dbid = dbid
         self.name = name
         self.users = []
@@ -20,10 +22,10 @@ class UserStorage:
 
 
 class User:
-    def __init__(self, dbid, identity):
+    def __init__(self, dbid: int, identity: str):
         self.dbid = dbid
         self.identity = identity
-        self.fingers = []
+        self.fingers: typing.List[typing.Mapping[str, int]] = []
 
     def __repr__(self):
         return '<User: dbid=%04x identity=%s fingers=%s>' % (self.dbid, repr(
@@ -35,7 +37,7 @@ def subtype_to_string(s: int):
     return finger_name or 'Unknown'
 
 
-def parse_user_storage(rsp):
+def parse_user_storage(rsp: bytes):
     rc, = unpack('<H', rsp[:2])
 
     if rc == 0x04b3:
@@ -62,7 +64,7 @@ def parse_user_storage(rsp):
     return storage
 
 
-def parse_identity(b):
+def parse_identity(b: bytes):
     t, b = b[:4], b[4:]
     t, = unpack('<L', t)
 
@@ -127,7 +129,7 @@ class DbRecord:
 
 class Db:
     class Info:
-        def __init__(self, total, used, free, records, roots):
+        def __init__(self, total: int, used: int, free: int, records: int, roots):
             self.total = total  # partition size
             self.used = used  # used (not deleted)
             self.free = free  # unallocated space
@@ -154,7 +156,7 @@ class Db:
         rc = self.get_record_children(stg.dbid).children
         return [i['dbid'] for i in rc if i['type'] == 8]  # 8 == "data" type
 
-    def get_user(self, dbid):
+    def get_user(self, dbid: int):
         return parse_user(tls.cmd(pack('<BHHH', 0x4a, dbid, 0, 0)))
 
     def lookup_user(self, identity: str) -> typing.Optional[User]:
@@ -169,7 +171,7 @@ class Db:
         else:
             return parse_user(rsp)
 
-    def get_record_value(self, dbid):
+    def get_record_value(self, dbid: int):
         rsp = tls.cmd(pack('<BH', 0x49, dbid))
         assert_status(rsp)
 
@@ -179,7 +181,7 @@ class Db:
 
         return rec
 
-    def get_record_children(self, dbid):
+    def get_record_children(self, dbid: int):
         rsp = tls.cmd(pack('<BH', 0x46, dbid))
         assert_status(rsp)
 
@@ -193,7 +195,7 @@ class Db:
 
         return rec
 
-    def del_record(self, dbid):
+    def del_record(self, dbid: int):
         assert_status(tls.cmd(pack('<BH', 0x48, dbid)))
 
     def db_info(self):
@@ -208,7 +210,7 @@ class Db:
 
         return Db.Info(total, used, free, records, roots)
 
-    def new_record(self, parent, typ, storage, data):
+    def new_record(self, parent: int, typ: int, storage: int, data: bytes):
         self.db_info()  # TODO check free space, compact the partition when out of storage
         assert_status(tls.cmd(db_write_enable))
         try:
@@ -219,21 +221,21 @@ class Db:
             call_cleanups()
         return recid
 
-    def new_user(self, identity):
+    def new_user(self, identity: str):
         data = identity_to_bytes(identity)
 
         stg = self.get_user_storage(name='StgWindsor')
         rec = self.new_record(stg.dbid, 5, stg.dbid, data)
         return rec
 
-    def new_finger(self, userid, template):
+    def new_finger(self, userid: int, template: bytes):
         stg = self.get_user_storage(name='StgWindsor')
         # We ask to create an object of type 0xb,
         # but because of the magical `db_write_enable` in the new_record() it ends up being 0x6
         rec = self.new_record(userid, 0xb, stg.dbid, template)
         return rec
 
-    def new_data(self, parent, data):
+    def new_data(self, parent: int, data: bytes):
         stg = self.get_user_storage(name='StgWindsor')
         data = pack('<HH', 1, len(data)) + data
         rec = self.new_record(parent, 0x8, stg.dbid, data)

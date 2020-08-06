@@ -48,6 +48,6 @@ def open():
     open_common()
 
 
-def open_devpath(busnum, address):
+def open_devpath(busnum: int, address: int):
     usb.open_devpath(busnum, address)
     open_common()

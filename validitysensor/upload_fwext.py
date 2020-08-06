@@ -1,6 +1,7 @@
 import logging
 from os.path import basename
 from time import ctime
+import typing
 
 from .flash import write_flash_all, write_fw_signature, get_fw_info
 from .sensor import reboot, write_hw_reg32, read_hw_reg32, identify_sensor
@@ -21,7 +22,7 @@ def default_fwext_name():
     return '6_07f_lenovo_mis_qm.xpfwext'
 
 
-def upload_fwext(fw_path=None):
+def upload_fwext(fw_path: typing.Optional[str]=None):
     fwi = get_fw_info(2)
     if fwi is not None:
         logging.info('Detected firmware version %d.%d (%s))' %

@@ -1,6 +1,7 @@
 import hmac
 import logging
 import os
+import typing
 from binascii import unhexlify
 from hashlib import sha256
 from struct import pack, unpack
@@ -11,7 +12,8 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from .blobs import reset_blob
-from .flash import write_flash, erase_flash, call_cleanups, PartitionInfo, get_flash_info
+from .flash import write_flash, erase_flash, call_cleanups, PartitionInfo, get_flash_info, FlashInfo
+from .hw_tables import FlashIcInfo
 from .sensor import reboot, RomInfo
 from .tls import tls, hs_key, crt_hardcoded
 from .usb import usb
@@ -45,7 +47,7 @@ def get_partition_signature():
     return partition_signature
 
 
-def with_hdr(id, buf):
+def with_hdr(id: int, buf: bytes):
     return pack('<HH', id, len(buf)) + buf
 
 
@@ -78,17 +80,17 @@ def make_cert(client_public):
     return msg
 
 
-def serialize_flash_params(ic):
+def serialize_flash_params(ic: FlashIcInfo):
     return pack('<LLxxBx', ic.size, ic.secror_size, ic.sector_erase_cmd)
 
 
-def serialize_partition(p):
+def serialize_partition(p: PartitionInfo):
     b = pack('<BBHLL', p.id, p.type, p.access_lvl, p.offset, p.size)
     b = b + b'\0' * 4 + sha256(b).digest()
     return b
 
 
-def partition_flash(info, layout, client_public):
+def partition_flash(info: FlashInfo, layout: typing.List[PartitionInfo], client_public):
     logging.info('Detected Flash IC: %s, %d bytes' % (info.ic.name, info.ic.size))
 
     cmd = unhex('4f 0000 0000')

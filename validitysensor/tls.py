@@ -2,6 +2,7 @@ import hmac
 import logging
 import os
 import pickle
+import typing
 from binascii import hexlify, unhexlify
 from hashlib import sha256
 from struct import pack, unpack
@@ -12,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-from .usb import usb
+from .usb import usb, Usb
 from .util import unhex
 
 password_hardcoded = unhexlify('717cd72d0962bc4a2846138dbb2c24192512a76407065f383846139d4bec2033')
@@ -34,7 +35,7 @@ fff000000000000000000000000000000000000000000000000000000000000000000000000
 crypto_backend = default_backend()
 
 
-def prf(secret, seed, length):
+def prf(secret: bytes, seed: bytes, length: int):
     n = (length + 0x20 - 1) // 0x20
 
     res = b''
@@ -55,15 +56,15 @@ def hs_key():
     return int(hs_key[::-1].hex(), 16)
 
 
-def with_2bytes_size(chunk):
+def with_2bytes_size(chunk: bytes):
     return pack('>H', len(chunk)) + chunk
 
 
-def with_3bytes_size(chunk):
+def with_3bytes_size(chunk: bytes):
     return pack('>BH', len(chunk) >> 16, len(chunk)) + chunk
 
 
-def with_1byte_size(chunk):
+def with_1byte_size(chunk: bytes):
     return pack('>B', len(chunk)) + chunk
 
 
@@ -76,18 +77,18 @@ def to_bytes(n):
     return b
 
 
-def pad(b):
+def pad(b: bytes):
     l = 16 - (len(b) % 16)
     return b + bytes([l - 1]) * l
 
 
-def unpad(b):
+def unpad(b: bytes):
     return b[:-1 - b[-1]]
 
 
 # TODO assert the right state transitions
 class Tls:
-    def __init__(self, usb):
+    def __init__(self, usb: Usb):
         self.usb = usb
         self.reset()
         try:
@@ -107,7 +108,7 @@ class Tls:
         self.secure_tx = False
 
     # Info about the host computer
-    def set_hwkey(self, product_name, serial_number):
+    def set_hwkey(self, product_name: str, serial_number: str):
         hw_key = bytes(product_name, 'ascii') + b'\0' + \
                  bytes(serial_number, 'ascii') + b'\0'
 
@@ -116,7 +117,7 @@ class Tls:
         self.psk_validation_key = prf(self.psk_encryption_key, b'GWK_SIGN' + gwk_sign_hardcoded,
                                       0x20)
 
-    def cmd(self, cmd):
+    def cmd(self, cmd: typing.Union[bytes, typing.Callable[[], bytes]]):
         if self.secure_rx and self.secure_tx:
             rsp = self.app(cmd)
         else:
@@ -142,15 +143,15 @@ class Tls:
 
         self.parse_tls_response(rsp)
 
-    def trace(self, s):
+    def trace(self, s: str):
         if self.trace_enabled:
             logging.debug(s)
 
-    def app(self, b):
+    def app(self, b: typing.Union[bytes, typing.Callable[[], bytes]]):
         b = b() if callable(b) else b
         return self.parse_tls_response(self.usb.cmd(self.make_app_data(b)))
 
-    def update_neg(self, b):
+    def update_neg(self, b: bytes):
         self.handshake_hash.update(b)
 
     def make_keys(self):
@@ -187,7 +188,7 @@ class Tls:
             self.secure_rx = d['secure_rx']
             self.secure_tx = d['secure_tx']
 
-    def decrypt(self, c):
+    def decrypt(self, c: bytes):
         iv, c = c[:0x10], c[0x10:]
         cipher = Cipher(algorithms.AES(self.decryption_key), modes.CBC(iv), backend=crypto_backend)
         decryptor = cipher.decryptor()
@@ -195,7 +196,7 @@ class Tls:
         m = unpad(m)
         return m
 
-    def encrypt(self, b):
+    def encrypt(self, b: bytes):
         #iv = unhexlify('454849acdd075174d6b9e713a957c2e7')
         iv = os.urandom(0x10)
         cipher = Cipher(algorithms.AES(self.encryption_key), modes.CBC(iv), backend=crypto_backend)
@@ -204,7 +205,7 @@ class Tls:
         c = encryptor.update(b) + encryptor.finalize()
         return iv + c
 
-    def validate(self, t, b):
+    def validate(self, t: int, b: bytes):
         b, hs = b[:-0x20], b[-0x20:]
 
         hdr = pack('>BBBH', t, 3, 3, len(b))
@@ -216,7 +217,7 @@ class Tls:
         self.trace('<tls< %02x: %s' % (t, hexlify(b).decode()))
         return b
 
-    def sign(self, t, b):
+    def sign(self, t: int, b: bytes):
         self.trace('>tls> %02x: %s' % (t, hexlify(b).decode()))
 
         hdr = pack('>BBBH', t, 3, 3, len(b))
@@ -240,7 +241,7 @@ class Tls:
         cert = pack('>BH', 0, len(self.tls_cert)) + cert  # same
         return self.with_neg_hdr(0x0b, cert)
 
-    def with_neg_hdr(self, t, b):
+    def with_neg_hdr(self, t: int, b: bytes):
         b = pack('>B', t) + with_3bytes_size(b)
         self.update_neg(b)
         return b
@@ -254,7 +255,7 @@ class Tls:
         b = self.priv_key.sign(buf, ec.ECDSA(Prehashed(hashes.SHA256())))
         return self.with_neg_hdr(0x0f, b)
 
-    def handle_server_hello(self, p):
+    def handle_server_hello(self, p: bytes):
         if p[:2] != unhexlify('0303'):
             raise Exception('unexpected TLS version %s' % hexlify(p[:2]).decode())
 
@@ -278,7 +279,7 @@ class Tls:
         if p != b'':
             raise Exception('Not expecting any more data')
 
-    def handle_cert_req(self, p):
+    def handle_cert_req(self, p: bytes):
         (sign_and_hash_algo, ), p = unpack('>H', p[:2]), p[2:]
         if sign_and_hash_algo != 0x140:
             raise Exception(
@@ -292,24 +293,24 @@ class Tls:
         if p != b'':
             raise Exception('Not expecting any more data')
 
-    def handle_server_hello_done(self, p):
+    def handle_server_hello_done(self, p: bytes):
         if p != b'':
             raise Exception('Not expecting any body for "server hello done" pkt: %s' %
                             hexlify(p).decode())
 
-    def handle_finish(self, b):
+    def handle_finish(self, b: bytes):
         hs_hash = self.handshake_hash.copy().digest()
         verify_data = prf(self.master_secret, b'server finished' + hs_hash, 0xc)
         if verify_data != b:
             raise Exception('Final handshake check failed')
 
-    def handle_app_data(self, b):
+    def handle_app_data(self, b: bytes):
         if not self.secure_rx:
             raise Exception('App payload before secure connection established')
 
         return self.validate(0x17, self.decrypt(b))
 
-    def handle_handshake(self, handshake):
+    def handle_handshake(self, handshake: bytes) -> None:
         if self.secure_rx:
             handshake = self.validate(0x16, self.decrypt(handshake))
 
@@ -335,7 +336,7 @@ class Tls:
 
             self.update_neg(hdr + p)
 
-    def parse_tls_response(self, rsp):
+    def parse_tls_response(self, rsp: bytes):
         app_data = b''
 
         while len(rsp) > 0:
@@ -366,7 +367,7 @@ class Tls:
 
         return app_data
 
-    def make_app_data(self, b):
+    def make_app_data(self, b: bytes):
         if not self.secure_tx:
             raise Exception('App payload before secure connection established')
 
@@ -374,7 +375,7 @@ class Tls:
 
         return unhexlify('170303') + with_2bytes_size(b)
 
-    def make_handshake(self, b):
+    def make_handshake(self, b: bytes):
         if self.secure_tx:
             b = self.encrypt(self.sign(0x16, b))
 
@@ -404,10 +405,10 @@ class Tls:
 
         return self.with_neg_hdr(0x01, h)
 
-    def make_ext(self, id, b):
+    def make_ext(self, id: int, b: bytes):
         return pack('>H', id) + with_2bytes_size(b)
 
-    def parse_tls_flash(self, reply):
+    def parse_tls_flash(self, reply: bytes):
         while len(reply) > 0:
             hdr, reply = reply[:4], reply[4:]
             hs, reply = reply[:0x20], reply[0x20:]
@@ -440,7 +441,7 @@ class Tls:
             else:
                 self.trace('unhandled block id %04x (%d bytes): %s' % (id, sz, hexlify(body)))
 
-    def make_tls_flash_block(self, id, body):
+    def make_tls_flash_block(self, id: int, body: bytes):
         m = sha256()
         m.update(body)
         hdr = pack('<HH', id, len(body))
@@ -457,16 +458,16 @@ class Tls:
         b += b'\xff' * (0x1000 - len(b))
         return b
 
-    def handle_empty(self, body):
+    def handle_empty(self, body: bytes):
         if body != b'\0' * len(body):
             raise Exception('Expected empty block')
 
-    def handle_cert(self, body):
+    def handle_cert(self, body: bytes):
         # TODO validate cert, check if pub keys match
         self.tls_cert = body
         self.trace('TLS cert blob: %s' % hexlify(self.tls_cert))
 
-    def handle_ecdh(self, body):
+    def handle_ecdh(self, body: bytes):
         self.ecdh_blob = body
         key, signature = body[:0x90], body[0x90:]
         x = key[0x8:0x8 + 0x20]
@@ -499,7 +500,7 @@ class Tls:
         # throws InvalidSignature
         fwpub.verify(signature, key, ec.ECDSA(hashes.SHA256()))
 
-    def handle_priv(self, body):
+    def handle_priv(self, body: bytes):
         self.priv_blob = body
         prefix, body = body[0], body[1:]
         if prefix != 2:

@@ -1,5 +1,6 @@
 from binascii import hexlify
 from struct import unpack, pack
+import typing
 
 codes = {}
 codes[0x0] = "No Operation"
@@ -98,7 +99,7 @@ insn_to_string = [
 ]
 
 
-def decode_insn(b):
+def decode_insn(b: bytes):
     if b[0] == 0:
         return 0, 1
     elif b[0] == 1:
@@ -135,7 +136,7 @@ def decode_insn(b):
         raise Exception('Unhandled instruction %02x' % b)
 
 
-def disassm_timeslot_table(b, off):
+def disassm_timeslot_table(b: bytes, off: int):
     pc = off
     while len(b) > 0:
         op, sz, *operands = decode_insn(b)
@@ -147,7 +148,7 @@ def disassm_timeslot_table(b, off):
         pc += sz
 
 
-def find_nth_insn(b, opcode, n):
+def find_nth_insn(b: bytes, opcode: int, n: int):
     pc = 0
     while len(b) > 0:
         op, sz, *_ = decode_insn(b)
@@ -164,7 +165,7 @@ def find_nth_insn(b, opcode, n):
         pc += sz
 
 
-def find_nth_regwrite(b, reg_addr, n):
+def find_nth_regwrite(b: bytes, reg_addr: int, n: int):
     pc = 0
     while len(b) > 0:
         op, sz, *operands = decode_insn(b)
@@ -183,20 +184,20 @@ def find_nth_regwrite(b, reg_addr, n):
         pc += sz
 
 
-def split_chunks(b):
+def split_chunks(b: bytes) -> typing.Generator[typing.List[typing.Union[int, bytes]], None, None]:
     while len(b) > 0:
         (typ, sz), b = unpack('<HH', b[:4]), b[4:]
         p, b = b[:sz], b[sz:]
         yield [typ, p]
 
 
-def merge_chunks(cs):
+def merge_chunks(cs: typing.List[typing.List[typing.Union[int, bytes]]]):
     return b''.join([pack('<HH', key, len(val)) + val for key, val in cs])
 
 
 def dump_all(b: bytes):
-    ts = None  # type: typing.Optional[bytes]
-    ts_off = None  # type: typing.Optional[int]
+    ts: typing.Optional[bytes] = None
+    ts_off: typing.Optional[int] = None
     while len(b) > 0:
         (typ, sz), b = unpack('<HH', b[:4]), b[4:]
         p, b = b[:sz], b[sz:]

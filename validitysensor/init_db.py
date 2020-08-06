@@ -4,7 +4,7 @@ from struct import pack, unpack
 from .db import db
 
 
-def machine_id_rec_value(b):
+def machine_id_rec_value(b: str):
     b = b.encode('utf-16le')
     b = b + b'\0' * (0x94 - len(b))
     return pack('<HH', 0x102, len(b)) + b  # 0x102 = Machine ID/GUID?

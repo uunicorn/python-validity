@@ -60,14 +60,14 @@ def get_prg_status2():
     return tls.app(unhexlify('5100200000'))
 
 
-def read_hw_reg32(addr):
+def read_hw_reg32(addr: int):
     rsp = tls.cmd(pack('<BLB', 7, addr, 4))
     assert_status(rsp)
     rsp, = unpack('<L', rsp[2:])
     return rsp
 
 
-def write_hw_reg32(addr, val):
+def write_hw_reg32(addr: int, val: int):
     rsp = tls.cmd(pack('<BLLB', 8, addr, val, 4))
     assert_status(rsp)
 
@@ -95,7 +95,7 @@ class RomInfo:
         rsp = rsp[2:]
         return cls(*unpack('<LLBBxBxxxB', rsp[0:0x10]))
 
-    def __init__(self, timestamp, build, major, minor, product, u1):
+    def __init__(self, timestamp: int, build: int, major: int, minor: int, product: int, u1: int):
         self.timestamp, self.build, self.major, self.minor, self.product, self.u1 = timestamp, build, major, minor, product, u1
 
     def __repr__(self):
@@ -124,7 +124,7 @@ def identify_sensor():
 #      d0000000 9400 0e00 0700 0080 07000000 2b23203c2d182e1e30182e1c321d341d341e321c301e1e241e201f201d1c321a301e1c211e21341f1e202024201f
 #      6c010000 1400 0e00 0f00 0080 05550007 7701002805720000080100020811e107
 #      88010000 0c00 0e00 1200 0080 07000000 7002 7800 7002 7800
-def get_factory_bits(tag):
+def get_factory_bits(tag: int):
     rsp = tls.cmd(pack('<B H HL', 0x6f, tag, 0, 0))
     assert_status(rsp)
     rsp = rsp[2:]
@@ -177,15 +177,16 @@ def bitpack(b):
 
 
 class Line:
-    mask = None
-    flags = None
-    data = None
-    v0 = 0
-    v1 = 0
-    v2 = 0
+    def __init__(self):
+        self.mask: typing.Optional[int] = None
+        self.flags: typing.Optional[int] = None
+        self.data: typing.Optional[bytes] = None
+        self.v0 = 0
+        self.v1 = 0
+        self.v2 = 0
 
 
-def clip(x):
+def clip(x: int):
     if x < -128:
         x = -128
 
@@ -195,19 +196,19 @@ def clip(x):
     return x & 0xff
 
 
-def scale(x):
+def scale(x: int):
     x -= 0x80
     x = int(x * 10 / 0x22)  # TODO: scaling factor depends on a device
     return clip(x)
 
 
-def add(l, r):
+def add(l: int, r: int):
     # Make signed
     l, r = unpack('bb', pack('BB', l, r))
     return clip(l + r)
 
 
-def chunks(b, l):
+def chunks(b: bytes, l: int):
     return [b[i:i + l] for i in range(0, len(b), l)]
 
 
@@ -266,7 +267,7 @@ class Sensor:
 
     # This is the exact logic from the DLL.
     # If it looks broken that was probably intended.
-    def patch_timeslot_table(self, b, inc_address, mult):
+    def patch_timeslot_table(self, b: bytes, inc_address: bool, mult: int):
         b = bytearray(b)
         i = 0
         while i + 3 < len(b):
@@ -290,7 +291,7 @@ class Sensor:
 
         return bytes(b)
 
-    def patch_timeslot_again(self, b):
+    def patch_timeslot_again(self, b: bytes):
         b = bytearray(b)
 
         pc = 0
@@ -336,7 +337,7 @@ class Sensor:
 
         return bytes(b)
 
-    def average(self, raw_calib_data):
+    def average(self, raw_calib_data: bytes):
         frame_size = self.lines_per_frame * self.bytes_per_line
         interleave_lines = self.lines_per_frame // self.type_info.lines_per_calibration_data  # 2, TODO: algo is quite different when it is 1
         input_frames = self.calibration_frames
@@ -371,7 +372,7 @@ class Sensor:
 
         return frame
 
-    def process_calibration_results(self, cooked_data):
+    def process_calibration_results(self, cooked_data: bytes):
         frame = chunks(cooked_data, self.bytes_per_line)
 
         # apply scaling factors
@@ -407,7 +408,7 @@ class Sensor:
 
         return key_line
 
-    def line_update_type_1(self, mode, chunks):
+    def line_update_type_1(self, mode: CaptureMode, chunks: typing.List[typing.List[typing.Union[int, bytes]]]):
         for c in chunks:
             # Timeslot Table 2D
             if c[0] == 0x34:
@@ -451,7 +452,7 @@ class Sensor:
         # ---------------- Interleave ---------------
         chunks += [[0x44, pack('<L', 1)]]
 
-        lines = []
+        lines: typing.List[Line] = []
         cnt = 2  # TODO figure out why 2
 
         l = Line()
@@ -510,7 +511,7 @@ class Sensor:
 
         return chunks
 
-    def line_update_type_2(self, mode, chunks):
+    def line_update_type_2(self, mode: CaptureMode, chunks: typing.List[typing.List[typing.Union[int, bytes]]]):
         for c in chunks:
             # patch the 2D params.
             # The following is only needed on some rom versions below 6.5 as reported by cmd_01
@@ -597,7 +598,7 @@ class Sensor:
 
         return chunks
 
-    def build_cmd_02(self, mode):
+    def build_cmd_02(self, mode: CaptureMode):
         chunks = list(prg.split_chunks(self.hardcoded_prog))
 
         if self.rom_info.product != 0x30:
@@ -615,7 +616,7 @@ class Sensor:
 
         return pack('<BHH', 2, self.bytes_per_line, req_lines) + prg.merge_chunks(chunks)
 
-    def persist_clean_slate(self, clean_slate):
+    def persist_clean_slate(self, clean_slate: bytes):
         start = read_flash(6, 0, 0x44)
 
         if start != b'\xff' * 0x44:
@@ -688,7 +689,7 @@ class Sensor:
     def cancel(self):
         usb.cancel = True
 
-    def capture(self, mode):
+    def capture(self, mode: CaptureMode) -> typing.Tuple[int, int, int, int]:
         try:
             assert_status(tls.app(self.build_cmd_02(mode)))
 
@@ -733,7 +734,7 @@ class Sensor:
         finally:
             tls.app(unhexlify('04'))  # capture stop if still running, cleanup
 
-    def enrollment_update_start(self, key):
+    def enrollment_update_start(self, key: int) -> int:
         rsp = tls.app(pack('<BLL', 0x68, key, 0))
         assert_status(rsp)
         new_key, = unpack('<L', rsp[2:])
@@ -749,7 +750,7 @@ class Sensor:
         assert_status(tls.app(pack('<BL', 0x69, 0)))
 
     # Generates interrupt
-    def enrollment_update(self, prev):
+    def enrollment_update(self, prev: bytes):
         write_enable()
         try:
             rsp = tls.app(b'\x6b' + prev)
@@ -759,7 +760,7 @@ class Sensor:
 
         return rsp[2:]
 
-    def append_new_image(self, prev):
+    def append_new_image(self, prev: bytes):
         self.enrollment_update(prev)
 
         usb.wait_int()
@@ -790,7 +791,7 @@ class Sensor:
 
         return header, template, tid
 
-    def make_finger_data(self, subtype, template, tid):
+    def make_finger_data(self, subtype: int, template: bytes, tid: bytes):
         template = pack('<HH', 1, len(template)) + template
         tid = pack('<HH', 2, len(tid)) + tid
 
@@ -804,7 +805,7 @@ class Sensor:
     # TODO: Better typing information needed.
     def enroll(self, identity: SidIdentity, subtype: int,
                update_cb: typing.Callable[[typing.Any, typing.Optional[Exception]], None]):
-        def do_create_finger(final_template, tid):
+        def do_create_finger(final_template: bytes, tid: bytes):
             tinfo = self.make_finger_data(subtype, final_template, tid)
 
             usr = db.lookup_user(identity)
@@ -849,7 +850,7 @@ class Sensor:
         self.enrollment_update_end()  # done twice for some reason
         return do_create_finger(template, tid)
 
-    def parse_dict(self, x):
+    def parse_dict(self, x: bytes):
         rc = {}
 
         while len(x) > 0:
@@ -890,7 +891,7 @@ class Sensor:
             # cleanup, ignore any errors
             tls.app(unhexlify('6200000000'))
 
-    def identify(self, update_cb):
+    def identify(self, update_cb: typing.Callable[[Exception], None]):
         while True:
             try:
                 glow_start_scan()
@@ -908,7 +909,7 @@ class Sensor:
 
         return self.match_finger()
 
-    def get_finger_blobs(self, usrid, subtype):
+    def get_finger_blobs(self, usrid: int, subtype: int):
         usr = db.get_user(usrid)
         fingerids = [f['dbid'] for f in usr.fingers if f['subtype'] == subtype]
 

@@ -1,18 +1,20 @@
+import typing
 from binascii import hexlify, unhexlify
 
 
 class SensorTypeInfo:
-    table = []
+    table: typing.List["SensorTypeInfo"] = []
 
     @classmethod
-    def get_by_type(cls, sensor_type):
+    def get_by_type(cls, sensor_type: int) -> typing.Optional["SensorTypeInfo"]:
+        # noinspection PyUnresolvedReferences
         from . import generated_tables
         for i in cls.table:
             if i.sensor_type == sensor_type:
                 return i
 
-    def __init__(self, sensor_type, bytes_per_line, repeat_multiplier, lines_per_calibration_data,
-                 line_width, calibration_blob):
+    def __init__(self, sensor_type: int, bytes_per_line: int, repeat_multiplier: int, lines_per_calibration_data: int,
+                 line_width: int, calibration_blob: str):
         self.sensor_type = sensor_type
         self.repeat_multiplier = repeat_multiplier
         self.lines_per_calibration_data = lines_per_calibration_data
@@ -50,10 +52,11 @@ def metric(i, rominfo):
 
 
 class SensorCaptureProg:
-    table = []
+    table: typing.List["SensorCaptureProg"] = []
 
     @classmethod
-    def get(cls, rominfo, sensor_type, a0, a1):
+    def get(cls, rominfo, sensor_type: int, a0: int, a1: int):
+        # noinspection PyUnresolvedReferences
         from . import generated_tables
 
         maximum = 0
@@ -80,7 +83,8 @@ class SensorCaptureProg:
         if found is not None:
             return b''.join(found.blobs)
 
-    def __init__(self, major, minor, build, u1, dev_type, a0, a1, blobs):
+    def __init__(self, major: int, minor: int, build: int, u1: int, dev_type: int, a0: int, a1: int,
+                 blobs: typing.Sequence[str]):
         self.major = major
         self.minor = minor
         self.build = build
@@ -88,8 +92,7 @@ class SensorCaptureProg:
         self.dev_type = dev_type
         self.a0 = a0
         self.a1 = a1
-        blobs = [unhexlify(b) for b in blobs]
-        self.blobs = blobs
+        self.blobs = [unhexlify(b) for b in blobs]
 
     def __repr__(self):
         blobs = [hexlify(b).decode() for b in self.blobs]

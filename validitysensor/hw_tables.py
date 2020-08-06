@@ -1,5 +1,5 @@
 class DeviceInfo:
-    def __init__(self, major, type, version, version_mask, name):
+    def __init__(self, major: int, type: int, version: int, version_mask: int, name: str):
         self.major, self.type, self.version, self.version_mask, self.name = major, type, version, version_mask, name
 
     def __repr__(self):
@@ -428,7 +428,7 @@ dev_info_table = [
 ]
 
 
-def dev_info_lookup(major, ver):
+def dev_info_lookup(major: int, ver: int):
     fuzzy_match = None
 
     for i in dev_info_table:
@@ -446,8 +446,8 @@ def dev_info_lookup(major, ver):
 
 
 class FlashIcInfo:
-    def __init__(self, name, size, f18, jid0, jid1, f1b, f1c, f1e, secror_size, sector_erase_cmd,
-                 f25, f26):
+    def __init__(self, name: str, size: int, f18: int, jid0: int, jid1: int, f1b: int, f1c: int,
+                 f1e: int, secror_size: int, sector_erase_cmd: int, f25: int, f26: int):
         self.name, self.size, self.f18, self.jid0, self.jid1, self.f1b, self.f1c, self.f1e, self.secror_size, self.sector_erase_cmd, self.f25, self.f26 = name, size, f18, jid0, jid1, f1b, f1c, f1e, secror_size, sector_erase_cmd, f25, f26
 
     def __repr__(self):
@@ -480,7 +480,7 @@ flash_ic_table = [
 ]
 
 
-def flash_ic_table_lookup(jedec_id0, jedec_id1, size):
+def flash_ic_table_lookup(jedec_id0: int, jedec_id1: int, size: int):
     for i in flash_ic_table:
         if i.jid0 == jedec_id0 and i.jid1 == jedec_id1 and i.size == size:
             return i
