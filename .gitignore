@@ -1,16 +1,17 @@
-debian/tmp/
-debian/debhelper-build-stamp
-debian/python3-validity/
-debian/python3-validity.substvars
-debian/files
 debian/*.debhelper
 debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/python3-validity.substvars
+debian/python3-validity/
+debian/tmp/
 
-__pycache__
+*.bin
+*.log
+.idea/*
 .pybuild/
+__pycache__
 build
 dist
 python_validity.egg-info/
 tls.dict
-*.bin
-*.log

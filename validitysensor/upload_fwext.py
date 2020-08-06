@@ -1,14 +1,10 @@
-
-from binascii import hexlify, unhexlify
 from time import ctime
 import logging
 from os.path import basename
 
-from .tls import tls
 from .usb import usb
 from .sensor import reboot, write_hw_reg32, read_hw_reg32, identify_sensor
-from .flash import read_flash, erase_flash, write_flash_all, write_fw_signature, get_fw_info
-from .util import assert_status
+from .flash import write_flash_all, write_fw_signature, get_fw_info
 
 firmware_home='/usr/share/python-validity'
 

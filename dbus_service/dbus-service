@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 
-import signal
 import argparse
-import re
 import os
 import pwd
+import re
+import signal
 import sys
 import time
+import typing
+from binascii import hexlify, unhexlify
+from pathlib import Path
+from threading import Thread
+
 import dbus
 import dbus.mainloop.glib
 import dbus.service
+import yaml
 from usb import core as usb_core
-from binascii import hexlify, unhexlify
-from threading import Thread
+
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 from gi.repository import GLib
 import logging
@@ -22,15 +27,16 @@ from validitysensor import init
 from validitysensor.tls import tls
 from validitysensor.usb import usb
 from validitysensor.sid import sid_from_string
-from validitysensor.db import subtype_to_string, db
-from validitysensor.sensor import sensor, reboot, RebootException
+from validitysensor.db import subtype_to_string, db, SidIdentity, User
+from validitysensor.sensor import sensor, RebootException
 from validitysensor.winbio_constants import finger_ids
 
 GLib.threads_init()
 
-INTERFACE_NAME='io.github.uunicorn.Fprint.Device'
+INTERFACE_NAME = 'io.github.uunicorn.Fprint.Device'
 
 loop = GLib.MainLoop()
+
 
 class NoEnrolledPrints(dbus.DBusException):
     _dbus_error_name = 'net.reactivated.Fprint.Error.NoEnrolledPrints'
@@ -38,28 +44,38 @@ class NoEnrolledPrints(dbus.DBusException):
     def __init__(self):
         super().__init__('No enrolled prints found')
 
-def uid2identity(uid):
-    sidstr='S-1-5-21-111111111-1111111111-1111111111-%d' % uid
-    return sid_from_string(sidstr)
 
 class Device(dbus.service.Object):
-    def __init__(self, bus_name):
+    def __init__(self, bus_name: dbus.Bus, config: typing.Dict[str, typing.Any]):
         dbus.service.Object.__init__(self, bus_name, '/io/github/uunicorn/Fprint/Device')
+        self.config = config
+
+    def user2identity(self, user: str) -> SidIdentity:
+        """Compute UID to SID mapping"""
+        pw = pwd.getpwnam(user)
+        uid = pw.pw_uid
+        if user in self.config['user_to_sid']:
+            sidstr = self.config['user_to_sid'][user]
+        else:
+            sidstr = 'S-1-5-21-111111111-1111111111-1111111111-%d' % uid
+        return sid_from_string(sidstr)
+
+    def user2record(self, user: str) -> User:
+        """Resolve user name to database object"""
+        return db.lookup_user(self.user2identity(user))
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME,
-                     in_signature="s",
-                     out_signature="as")
-    def ListEnrolledFingers(self, usr):
+                         in_signature="s",
+                         out_signature="as")
+    def ListEnrolledFingers(self, user):
         try:
-            logging.debug('In ListEnrolledFingers %s' % usr)
+            logging.debug('In ListEnrolledFingers %s' % user)
 
-            pw=pwd.getpwnam(usr)
-            uid=pw.pw_uid
-            usr=db.lookup_user(uid2identity(uid))
+            usr = self.user2record(user)
 
-            if usr == None:
+            if usr is None:
                 return []
-            
+
             rc = [subtype_to_string(f['subtype']) for f in usr.fingers]
             logging.debug(repr(rc))
             return rc
@@ -67,14 +83,13 @@ class Device(dbus.service.Object):
             raise e
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME,
-                     in_signature='s',
-                     out_signature='')
+                         in_signature='s',
+                         out_signature='')
     def DeleteEnrolledFingers(self, user):
         logging.debug('In DeleteEnrolledFingers %s' % user)
-        pw=pwd.getpwnam(user)
-        usr=db.lookup_user(uid2identity(pw.pw_uid))
+        usr = self.user2record(user)
 
-        if usr == None:
+        if usr is None:
             return
 
         db.del_record(usr.dbid)
@@ -85,10 +100,9 @@ class Device(dbus.service.Object):
     def VerifyStart(self, user, finger):
         logging.debug('In VerifyStart for %s, %s' % (user, finger))
 
-        pw = pwd.getpwnam(user)
-        usr = db.lookup_user(uid2identity(pw.pw_uid))
+        usr = self.user2record(user)
 
-        if usr == None:
+        if usr is None:
             raise NoEnrolledPrints()
 
         self.VerifyFingerSelected('any')
@@ -115,7 +129,6 @@ class Device(dbus.service.Object):
         thread = Thread(target=run)
         thread.daemon = True
         thread.start()
-        
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME,
                          in_signature='',
@@ -128,14 +141,15 @@ class Device(dbus.service.Object):
                          out_signature='')
     def EnrollStart(self, user, finger_name):
         logging.debug('In EnrollStart %s for %s' % (finger_name, user))
-        pw=pwd.getpwnam(user)
-        uid=pw.pw_uid
 
         # left-ring-finger => LH
         hand = 'LH' if finger_name[0] == 'l' else 'RH'
         # left-ring-finger => RING_FINGER
         generic_finger = '_'.join(finger_name.split('-')[1:]).upper()
         winbio_name = 'WINBIO_ANSI_381_POS_' + hand + '_' + generic_finger
+
+        usr = self.user2identity(user)
+        index = finger_ids.get(winbio_name, None)
 
         def update_cb(rsp, e):
             if e is not None:
@@ -145,7 +159,7 @@ class Device(dbus.service.Object):
 
         def run():
             try:
-                sensor.enroll(uid2identity(uid), index, update_cb)
+                sensor.enroll(usr, index, update_cb)
                 self.EnrollStatus('enroll-completed', True)
             except usb_core.USBError as e:
                 logging.exception(e)
@@ -155,9 +169,8 @@ class Device(dbus.service.Object):
                 logging.exception(e)
                 self.EnrollStatus('enroll-failed', True)
 
-        index = finger_ids.get(winbio_name, None)
         if index == None:
-            logging.error(
+            logging.exception(
                 'Unknown finger name passed to enroll? ' +
                 finger_name + ' (' + winbio_name + ')'
             )
@@ -166,7 +179,6 @@ class Device(dbus.service.Object):
             thread = Thread(target=run)
             thread.daemon = True
             thread.start()
-        
 
     @dbus.service.signal(dbus_interface=INTERFACE_NAME, signature='sb')
     def VerifyStatus(self, result, done):
@@ -187,7 +199,9 @@ class Device(dbus.service.Object):
         logging.debug('RunCmd')
         return hexlify(tls.app(unhexlify(cmd))).decode()
 
-backoff_file='/usr/share/python-validity/backoff'
+
+backoff_file = '/usr/share/python-validity/backoff'
+
 
 # I don't know how to tell systemd to backoff in case of multiple instance of the same template service, help!
 def backoff():
@@ -195,10 +209,10 @@ def backoff():
         with open(backoff_file, 'r') as f:
             lines = list(map(float, f.readlines()))
     else:
-        lines=[]
+        lines = []
 
     while len(lines) > 0 and lines[0] + 60 < time.time():
-        lines=lines[1:]
+        lines = lines[1:]
 
     lines += [time.time()]
 
@@ -209,10 +223,12 @@ def backoff():
     if len(lines) > 10:
         raise Exception('Refusing to start more than 10 times per minute')
 
-if __name__ == '__main__':
+
+def main():
     parser = argparse.ArgumentParser('Open fprintd DBus service')
     parser.add_argument('--debug', help='Enable tracing', action='store_true')
     parser.add_argument('--devpath', help='USB device path: usb-<busnum>-<address>')
+    parser.add_argument('--configpath', default='/etc/python-validity', type=Path, help='Path to config files')
     args = parser.parse_args()
 
     if args.debug:
@@ -222,8 +238,26 @@ if __name__ == '__main__':
     else:
         level = logging.INFO
 
-    handler = logging.handlers.SysLogHandler(address = '/dev/log')
+    handler = logging.handlers.SysLogHandler(address='/dev/log')
     logging.basicConfig(level=level, handlers=[handler])
+
+    # Load and perform basic validation of config file.
+    try:
+        with (args.configpath / 'dbus-service.yaml').open(mode='rt') as configfd:
+            config = yaml.load(configfd)
+    except FileNotFoundError:
+        # No configuration file. Create default
+        config = {'user_to_sid': {}}
+
+    if 'user_to_sid' not in config:
+        raise Exception("No user to SID mapping in config file!")
+    # Be kind to user, and allow empty mapping that got turned into a null by mistake.
+    if config['user_to_sid'] is None:
+        config['user_to_sid'] = {}
+    if not all(isinstance(e, str) for e in config['user_to_sid'].keys()):
+        raise Exception("Keys in user to SID map must be strings")
+    if not all(isinstance(e, str) for e in config['user_to_sid'].values()):
+        raise Exception("Values in user to SID map must be strings")
 
     backoff()
 
@@ -231,7 +265,7 @@ if __name__ == '__main__':
         if args.devpath is None:
             init.open()
         else:
-            z = re.match('^usb-(\d+)-(\d+)$', args.devpath)
+            z = re.match(r'^usb-(\d+)-(\d+)$', args.devpath)
             if not z:
                 parser.error('Option --devpath should look like this: usb-<busnum>-<address>')
 
@@ -242,9 +276,8 @@ if __name__ == '__main__':
 
     bus = dbus.SystemBus()
 
-    svc = Device(bus)
+    svc = Device(bus, config)
 
-    watcher = None
     def watch_cb(name):
         if name == '':
             logging.debug('Manager is offline')
@@ -253,13 +286,14 @@ if __name__ == '__main__':
             mgr = bus.get_object(name, '/net/reactivated/Fprint/Manager')
             mgr = dbus.Interface(mgr, 'net.reactivated.Fprint.Manager')
             mgr.RegisterDevice(svc)
+
     watcher = bus.watch_name_owner('net.reactivated.Fprint', watch_cb)
 
     # Kick off the open-fprintd if it was not started yet
     bus.get_object('net.reactivated.Fprint', '/net/reactivated/Fprint/Manager')
 
     def die(x):
-        logging.info('Cought signal %d. Stopping...' % x)
+        logging.info('Caught signal %d. Stopping...' % x)
         loop.quit()
 
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, die, signal.SIGINT)
@@ -270,3 +304,6 @@ if __name__ == '__main__':
         logging.exception(e)
         raise e
 
+
+if __name__ == '__main__':
+    main()

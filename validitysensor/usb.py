@@ -3,10 +3,8 @@ import logging
 import errno
 import usb.core as ucore
 from binascii import *
-from .util import assert_status, unhex
+from .util import assert_status
 from struct import unpack
-from usb.util import claim_interface, release_interface
-from threading import Thread
 from usb.core import USBError
 from .blobs import init_hardcoded, init_hardcoded_clean_slate
 

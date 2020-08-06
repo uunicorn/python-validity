@@ -3,9 +3,6 @@ from struct import pack, unpack
 import logging
 
 from .db import db
-from .usb import usb
-from .tls import tls
-from .flash import read_flash
 
 def machine_id_rec_value(b):
     b = b.encode('utf-16le')
