@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 
 import os
-
 from binascii import unhexlify
-from enum import Enum
-from validitysensor.flash import read_flash
-from validitysensor.sensor import *
-from validitysensor import init
 from time import sleep
-from usb import core as usb_core
 
+from validitysensor import init
+from validitysensor.sensor import glow_start_scan, glow_end_scan
+from validitysensor.tls import tls
+from validitysensor.util import assert_status
 
 if __name__ == "__main__":
     if os.geteuid() != 0:
@@ -23,10 +21,9 @@ if __name__ == "__main__":
         glow_end_scan()
         sleep(0.05)
 
-    led_script = unhexlify(
-        '39ff100000ff03000001ff002000000000ffff0000ffff0000ff03000001ff00' \
-        '200000000000000000ffff0000ff03000001ff002000000000ffff0000000000' \
-        '0000000000000000000000000000000000000000000000000000000000000000' \
-        '0000000000000000000000000000000000000000000000000000000000')
+    led_script = unhexlify('39ff100000ff03000001ff002000000000ffff0000ffff0000ff03000001ff00'
+                           '200000000000000000ffff0000ff03000001ff002000000000ffff0000000000'
+                           '0000000000000000000000000000000000000000000000000000000000000000'
+                           '0000000000000000000000000000000000000000000000000000000000')
 
     assert_status(tls.app(led_script))

@@ -1,14 +1,14 @@
-
 import atexit
 import logging
 
-from validitysensor.usb import usb
-from validitysensor.tls import tls
-from validitysensor.sensor import sensor, reboot, RebootException
 from validitysensor.flash import read_tls_flash
-from validitysensor.init_flash import init_flash
-from validitysensor.upload_fwext import upload_fwext
 from validitysensor.init_db import init_db
+from validitysensor.init_flash import init_flash
+from validitysensor.sensor import sensor, reboot, RebootException
+from validitysensor.tls import tls
+from validitysensor.upload_fwext import upload_fwext
+from validitysensor.usb import usb
+
 
 def close():
     logging.debug('In atexit handler')
@@ -24,16 +24,17 @@ def close():
         finally:
             usb.close()
 
+
 def open_common():
     init_flash()
     usb.send_init()
-    tls.parseTlsFlash(read_tls_flash())
+    tls.parse_tls_flash(read_tls_flash())
     tls.open()
     upload_fwext()
     sensor.open()
     init_db()
 
-    # We must register atexit only after we opened usb device, 
+    # We must register atexit only after we opened usb device,
     # so that our atexit handler is called before pyusb's one and we can still talk to the device
     #
     # Don't attempt to autoreboot unless we finished initializing the sensor successfully.
@@ -41,10 +42,12 @@ def open_common():
     atexit.register(close)
     logging.debug('atexit registered')
 
+
 def open():
     usb.open()
     open_common()
 
-def open_devpath(busnum, address):
+
+def open_devpath(busnum: int, address: int):
     usb.open_devpath(busnum, address)
     open_common()

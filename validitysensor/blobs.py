@@ -1,13 +1,4 @@
-from enum import Enum, auto
-
-class Blobs(Enum):
-    init_hardcoded = auto()
-    init_hardcoded_clean_slate = auto()
-    reset_blob = auto()
-    db_write_enable = auto()
-
-
-def __load_blob(blob):
+def __load_blob(blob: str) -> bytes:
     from .usb import usb
 
     if usb.usb_dev().idVendor == 0x138a:
@@ -22,6 +13,8 @@ def __load_blob(blob):
     globals()[blob] = getattr(blobs, blob)
     return globals()[blob]
 
-for p in dir(Blobs):
-    if isinstance(getattr(Blobs, p), Blobs):
-        globals()[p] = lambda bname=p: __load_blob(bname)
+
+init_hardcoded = lambda: __load_blob('init_hardcoded')
+init_hardcoded_clean_slate = lambda: __load_blob('init_hardcoded_clean_slate')
+reset_blob = lambda: __load_blob('reset_blob')
+db_write_enable = lambda: __load_blob('db_write_enable')

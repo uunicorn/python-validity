@@ -1,14 +1,13 @@
-
-class DeviceInfo():
-    def __init__(self, major, type, version, version_mask, name):
+class DeviceInfo:
+    def __init__(self, major: int, type: int, version: int, version_mask: int, name: str):
         self.major, self.type, self.version, self.version_mask, self.name = major, type, version, version_mask, name
 
     def __repr__(self):
         return "DeviceInfo(0x%04x, 0x%04x, 0x%02x, 0x%02x, '%s')" % (
-                self.major, self.type, self.version, self.version_mask, self.name
-            )
+            self.major, self.type, self.version, self.version_mask, self.name)
 
-dev_info_table=[
+
+dev_info_table = [
     DeviceInfo(0x0000, 0x0080, 0x00, 0x00, 'VSI 15A            '),
     DeviceInfo(0x0000, 0x0080, 0x00, 0x00, 'VSI 15A            '),
     DeviceInfo(0x0000, 0x0080, 0x00, 0x00, 'VSI 15A            '),
@@ -428,7 +427,8 @@ dev_info_table=[
     DeviceInfo(0x0190, 0x2449, 0xa3, 0xff, '86C  TM-P3569-001  '),
 ]
 
-def dev_info_lookup(major, ver):
+
+def dev_info_lookup(major: int, ver: int):
     fuzzy_match = None
 
     for i in dev_info_table:
@@ -444,16 +444,19 @@ def dev_info_lookup(major, ver):
 
     return fuzzy_match
 
-class FlashIcInfo():
-    def __init__(self, name, size, f18, jid0, jid1, f1b, f1c, f1e, secror_size, sector_erase_cmd, f25, f26):
+
+class FlashIcInfo:
+    def __init__(self, name: str, size: int, f18: int, jid0: int, jid1: int, f1b: int, f1c: int,
+                 f1e: int, secror_size: int, sector_erase_cmd: int, f25: int, f26: int):
         self.name, self.size, self.f18, self.jid0, self.jid1, self.f1b, self.f1c, self.f1e, self.secror_size, self.sector_erase_cmd, self.f25, self.f26 = name, size, f18, jid0, jid1, f1b, f1c, f1e, secror_size, sector_erase_cmd, f25, f26
 
     def __repr__(self):
         return "FlashIcInfo('%s', %d, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x)" % (
-                self.name, self.size, self.f18, self.jid0, self.jid1, self.f1b, self.f1c, self.f1e, self.secror_size, self.sector_erase_cmd, self.f25, self.f26)
-        
+            self.name, self.size, self.f18, self.jid0, self.jid1, self.f1b, self.f1c, self.f1e,
+            self.secror_size, self.sector_erase_cmd, self.f25, self.f26)
 
-flash_ic_table=[
+
+flash_ic_table = [
     FlashIcInfo('M25P05-A', 65536, 0x5, 0x20, 0x20, 0x10, 0x8000, 0x0, 0x8000, 0xd8, 0x0, 0x4),
     FlashIcInfo('M25P10-A', 131072, 0x10, 0x20, 0x20, 0x11, 0x8000, 0x0, 0x8000, 0xd8, 0x0, 0x4),
     FlashIcInfo('M25P20', 262144, 0x11, 0x20, 0x20, 0x12, 0x0, 0x1, 0x10000, 0xd8, 0x0, 0x4),
@@ -476,10 +479,10 @@ flash_ic_table=[
     FlashIcInfo('GD25Q80C', 1048576, 0x13, 0xc8, 0x40, 0x14, 0x0, 0x1, 0x1000, 0x20, 0x0, 0x4),
 ]
 
-def flash_ic_table_lookup(jedec_id0, jedec_id1, size):
+
+def flash_ic_table_lookup(jedec_id0: int, jedec_id1: int, size: int):
     for i in flash_ic_table:
         if i.jid0 == jedec_id0 and i.jid1 == jedec_id1 and i.size == size:
             return i
 
     return None
-

@@ -20,23 +20,24 @@
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import urllib.request
-import shutil
+from enum import Enum
 
-from enum import Enum, auto
-from time import sleep
 from usb import core as usb_core
 
-python_validity_data='/usr/share/python-validity/'
+python_validity_data = '/usr/share/python-validity/'
+
 
 # FIXME: supported usb ids are duplicated in usb.py
 class VFS(Enum):
     DEV_90 = (0x138a, 0x0090)
     DEV_97 = (0x138a, 0x0097)
     DEV_9a = (0x06cb, 0x009a)
+
 
 DEFAULT_URIS = {
     VFS.DEV_90: {
@@ -76,21 +77,19 @@ def download_and_extract_fw(dev_type, fwdir, fwuri=None):
         with open(fwarchive, 'wb') as out_file:
             out_file.write(response.read())
 
-    subprocess.check_call(['innoextract',
-        '--output-dir', fwdir,
-        '--include', fwname,
-        '--collisions', 'overwrite',
+    subprocess.check_call([
+        'innoextract', '--output-dir', fwdir, '--include', fwname, '--collisions', 'overwrite',
         fwarchive
     ])
 
-    fwpath = subprocess.check_output([
-        'find', fwdir, '-name', fwname]).decode('utf-8').strip()
+    fwpath = subprocess.check_output(['find', fwdir, '-name', fwname]).decode('utf-8').strip()
     print('Found firmware at {}'.format(fwpath))
 
     if not fwpath:
         raise Exception('No {} found in the archive'.format(fwname))
 
     return fwpath
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -111,8 +110,7 @@ if __name__ == "__main__":
         raise Exception('No supported validity device found')
 
     try:
-        subprocess.check_call(['innoextract', '--version'],
-            stdout=subprocess.DEVNULL)
+        subprocess.check_call(['innoextract', '--version'], stdout=subprocess.DEVNULL)
     except Exception as e:
         print('Impossible to run innoextract: {}'.format(e))
         sys.exit(1)
