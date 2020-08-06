@@ -6,6 +6,7 @@ from binascii import hexlify
 from .blobs import db_write_enable
 from .flash import call_cleanups
 from .sid import *
+from .winbio_constants import finger_names
 
 class UserStorage():
     def __init__(self, dbid, name):
@@ -26,10 +27,8 @@ class User():
         return '<User: dbid=%04x identity=%s fingers=%s>' % (self.dbid, repr(self.identity), repr(self.fingers))
 
 def subtype_to_string(s: int):
-    if s < 0xf5 or s > 0xfe:
-        return 'Unknown'
-
-    return 'WINBIO_FINGER_UNSPECIFIED_POS_%02d' % (s - 0xf5 + 1)
+    finger_name = finger_names.get(s, None)
+    return finger_name or 'Unknown'
 
 def parse_user_storage(rsp):
     rc, = unpack('<H', rsp[:2])
