@@ -80,7 +80,8 @@ class ModuleInfo:
 
 
 class FirmwareInfo:
-    def __init__(self, major: int, minor: int, buildtime: int, modules: typing.Sequence[ModuleInfo]):
+    def __init__(self, major: int, minor: int, buildtime: int,
+                 modules: typing.Sequence[ModuleInfo]):
         self.major, self.minor, self.buildtime, self.modules = major, minor, buildtime, modules
 
     def __repr__(self):

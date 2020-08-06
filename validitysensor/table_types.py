@@ -13,8 +13,8 @@ class SensorTypeInfo:
             if i.sensor_type == sensor_type:
                 return i
 
-    def __init__(self, sensor_type: int, bytes_per_line: int, repeat_multiplier: int, lines_per_calibration_data: int,
-                 line_width: int, calibration_blob: str):
+    def __init__(self, sensor_type: int, bytes_per_line: int, repeat_multiplier: int,
+                 lines_per_calibration_data: int, line_width: int, calibration_blob: str):
         self.sensor_type = sensor_type
         self.repeat_multiplier = repeat_multiplier
         self.lines_per_calibration_data = lines_per_calibration_data

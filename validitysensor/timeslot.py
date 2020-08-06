@@ -1,6 +1,6 @@
+import typing
 from binascii import hexlify
 from struct import unpack, pack
-import typing
 
 codes = {}
 codes[0x0] = "No Operation"

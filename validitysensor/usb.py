@@ -1,8 +1,8 @@
 import errno
 import logging
+import typing
 from binascii import hexlify, unhexlify
 from struct import unpack
-import typing
 
 import usb.core as ucore
 from usb.core import USBError

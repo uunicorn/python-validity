@@ -197,7 +197,7 @@ class Tls:
         return m
 
     def encrypt(self, b: bytes):
-        #iv = unhexlify('454849acdd075174d6b9e713a957c2e7')
+        # iv = unhexlify('454849acdd075174d6b9e713a957c2e7')
         iv = os.urandom(0x10)
         cipher = Cipher(algorithms.AES(self.encryption_key), modes.CBC(iv), backend=crypto_backend)
         encryptor = cipher.encryptor()
@@ -383,7 +383,7 @@ class Tls:
 
     def make_client_hello(self):
         h = unhexlify('0303')  # TLS 1.2
-        #self.client_random = unhexlify('bc349559ac16c8f8362191395b4d04a435d870315f519eed8777488bc2b9600c')
+        # self.client_random = unhexlify('bc349559ac16c8f8362191395b4d04a435d870315f519eed8777488bc2b9600c')
         self.client_random = os.urandom(0x20)
         h += self.client_random  # client's random
         h += with_1byte_size(unhexlify('00000000000000'))  # session ID
@@ -533,8 +533,8 @@ class Tls:
         self.trace('d=0x%x' % d)
 
         # Someone has reported that x and y are 0 after pairing with the latest windows driver.
-        #pub_key = ec.EllipticCurvePublicNumbers(x, y, ec.SECP256R1())
-        #self.priv_key = ec.EllipticCurvePrivateNumbers(d, pub_key).private_key(crypto_backend)
+        # pub_key = ec.EllipticCurvePublicNumbers(x, y, ec.SECP256R1())
+        # self.priv_key = ec.EllipticCurvePrivateNumbers(d, pub_key).private_key(crypto_backend)
 
         self.priv_key = ec.derive_private_key(d, ec.SECP256R1(), backend=crypto_backend)
 

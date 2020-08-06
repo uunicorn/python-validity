@@ -158,11 +158,9 @@ class Device(dbus.service.Object):
                 logging.exception(e)
                 self.EnrollStatus('enroll-failed', True)
 
-        if index == None:
-            logging.exception(
-                'Unknown finger name passed to enroll? ' +
-                finger_name + ' (' + winbio_name + ')'
-            )
+        if index is None:
+            logging.exception('Unknown finger name passed to enroll? ' + finger_name + ' (' +
+                              winbio_name + ')')
             self.EnrollStatus('enroll-failed', True)
         else:
             thread = Thread(target=run)

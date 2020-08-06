@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import dbus.mainloop.glib
+
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 
 bus = dbus.SystemBus()

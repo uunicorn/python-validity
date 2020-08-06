@@ -408,7 +408,8 @@ class Sensor:
 
         return key_line
 
-    def line_update_type_1(self, mode: CaptureMode, chunks: typing.List[typing.List[typing.Union[int, bytes]]]):
+    def line_update_type_1(self, mode: CaptureMode,
+                           chunks: typing.List[typing.List[typing.Union[int, bytes]]]):
         for c in chunks:
             # Timeslot Table 2D
             if c[0] == 0x34:
@@ -511,11 +512,12 @@ class Sensor:
 
         return chunks
 
-    def line_update_type_2(self, mode: CaptureMode, chunks: typing.List[typing.List[typing.Union[int, bytes]]]):
+    def line_update_type_2(self, mode: CaptureMode,
+                           chunks: typing.List[typing.List[typing.Union[int, bytes]]]):
         for c in chunks:
             # patch the 2D params.
             # The following is only needed on some rom versions below 6.5 as reported by cmd_01
-            #if c[0] == 0x2f:
+            # if c[0] == 0x2f:
             #    c[1] = pack('<L', unpack('<L', c[1])[0]*mult)
 
             # Timeslot Table 2D
@@ -589,7 +591,7 @@ class Sensor:
             if pad > 0:
                 l.data += b'\0' * (4 - pad)
 
-        #---------------- Line Update ---------------
+        # ---------------- Line Update ---------------
         line_update = pack('<L', len(lines))
         line_update += b''.join([pack('<LL', l.mask, l.flags) for l in lines])
 
