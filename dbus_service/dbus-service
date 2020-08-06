@@ -24,6 +24,7 @@ from validitysensor.usb import usb
 from validitysensor.sid import sid_from_string
 from validitysensor.db import subtype_to_string, db
 from validitysensor.sensor import sensor, reboot, RebootException
+from validitysensor.winbio_constants import finger_ids
 
 GLib.threads_init()
 
@@ -129,6 +130,13 @@ class Device(dbus.service.Object):
         logging.debug('In EnrollStart %s for %s' % (finger_name, user))
         pw=pwd.getpwnam(user)
         uid=pw.pw_uid
+
+        # left-ring-finger => LH
+        hand = 'LH' if finger_name[0] == 'l' else 'RH'
+        # left-ring-finger => RING_FINGER
+        generic_finger = '_'.join(finger_name.split('-')[1:]).upper()
+        winbio_name = 'WINBIO_ANSI_381_POS_' + hand + '_' + generic_finger
+
         def update_cb(rsp, e):
             if e is not None:
                 self.EnrollStatus('enroll-retry-scan', False)
@@ -137,7 +145,7 @@ class Device(dbus.service.Object):
 
         def run():
             try:
-                sensor.enroll(uid2identity(uid), 0xf5, update_cb) # TODO parse the finger name
+                sensor.enroll(uid2identity(uid), index, update_cb)
                 self.EnrollStatus('enroll-completed', True)
             except usb_core.USBError as e:
                 logging.exception(e)
@@ -147,9 +155,17 @@ class Device(dbus.service.Object):
                 logging.exception(e)
                 self.EnrollStatus('enroll-failed', True)
 
-        thread = Thread(target=run)
-        thread.daemon = True
-        thread.start()
+        index = finger_ids.get(winbio_name, None)
+        if index == None:
+            logging.error(
+                'Unknown finger name passed to enroll? ' +
+                finger_name + ' (' + winbio_name + ')'
+            )
+            self.EnrollStatus('enroll-failed', True)
+        else:
+            thread = Thread(target=run)
+            thread.daemon = True
+            thread.start()
         
 
     @dbus.service.signal(dbus_interface=INTERFACE_NAME, signature='sb')
