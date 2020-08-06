@@ -6,7 +6,7 @@ from binascii import hexlify
 from .blobs import db_write_enable
 from .flash import call_cleanups
 from .sid import *
-from .winbio_constants import finger_names, finger_ids
+from .winbio_constants import finger_names
 
 class UserStorage():
     def __init__(self, dbid, name):
