@@ -194,7 +194,9 @@ def merge_chunks(cs):
     return b''.join([pack('<HH', key, len(val)) + val for key, val in cs])
 
 
-def dump_all(b):
+def dump_all(b: bytes):
+    ts = None  # type: typing.Optional[bytes]
+    ts_off = None  # type: typing.Optional[int]
     while len(b) > 0:
         (typ, sz), b = unpack('<HH', b[:4]), b[4:]
         p, b = b[:sz], b[sz:]
