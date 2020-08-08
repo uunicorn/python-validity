@@ -2,6 +2,7 @@ import errno
 import logging
 import typing
 from binascii import hexlify, unhexlify
+from enum import Enum
 from struct import unpack
 
 import usb.core as ucore
@@ -10,11 +11,19 @@ from usb.core import USBError
 from .blobs import init_hardcoded, init_hardcoded_clean_slate
 from .util import assert_status
 
-supported_devices = [
-    (0x138a, 0x0090),
-    (0x138a, 0x0097),
-    (0x06cb, 0x009a),
-]
+
+class SupportedDevices(Enum):
+    """USB IDs for supported devices"""
+    DEV_90 = (0x138a, 0x0090)
+    DEV_97 = (0x138a, 0x0097)
+    DEV_9a = (0x06cb, 0x009a)
+
+    @classmethod
+    def from_usbid(cls, vendorid, productid):
+        return supported_devices[(vendorid, productid)]
+
+
+supported_devices = dict((dev.value, dev) for dev in SupportedDevices)
 
 
 class CancelledException(Exception):

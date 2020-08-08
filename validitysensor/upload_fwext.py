@@ -3,23 +3,21 @@ import typing
 from os.path import basename
 from time import ctime
 
+from .firmware_tables import FIRMWARE_NAMES
 from .flash import write_flash_all, write_fw_signature, get_fw_info
 from .sensor import reboot, write_hw_reg32, read_hw_reg32, identify_sensor
-from .usb import usb
+from .usb import usb, SupportedDevices
 
 firmware_home = '/usr/share/python-validity'
 
 
 def default_fwext_name():
-    if usb.usb_dev().idVendor == 0x138a:
-        if usb.usb_dev().idProduct == 0x0090:
-            return '6_07f_Lenovo.xpfwext'
-
+    dev = SupportedDevices.from_usbid(usb.usb_dev().idVendor, usb.usb_dev().idProduct)
     # It looks like the firmware file must match DLL, not the hardware.
     # Both DLL and xpfwext are universal.
     # The device dependant code seems to be loaded dynamically (via encrypted blobs).
     # So, it is important that xpfwext file is matching the blobs contents.
-    return '6_07f_lenovo_mis_qm.xpfwext'
+    return FIRMWARE_NAMES[dev]
 
 
 def upload_fwext(fw_path: typing.Optional[str] = None):
