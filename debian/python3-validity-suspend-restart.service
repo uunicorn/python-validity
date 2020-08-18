@@ -1,11 +1,10 @@
 [Unit]
 Description=Restart python-validity after resume
-After=suspend.target hibernate.target hybrid-sleep.target
+After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
 
 [Service]
 Type=simple
 ExecStart=/bin/systemctl --no-block restart python3-validity.service
 
 [Install]
-WantedBy=suspend.target hibernate.target hybrid-sleep.target
-
+WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
