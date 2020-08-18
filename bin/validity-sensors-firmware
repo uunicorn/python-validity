@@ -19,6 +19,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
+import hashlib
 import os
 import shutil
 import subprocess
@@ -28,15 +29,15 @@ import urllib.request
 
 from usb import core as usb_core
 
-from validitysensor.usb import SupportedDevices
 from validitysensor.firmware_tables import FIRMWARE_NAMES, FIRMWARE_URIS
-
+from validitysensor.usb import SupportedDevices
 
 python_validity_data = '/usr/share/python-validity/'
 
 
 def download_and_extract_fw(dev_type, fwdir, fwuri=None):
     fwuri = fwuri if fwuri else FIRMWARE_URIS[dev_type]['driver']
+    expected_hash = FIRMWARE_URIS[dev_type]['sha512']
     fwarchive = os.path.join(fwdir, 'fwinstaller.exe')
     fwname = FIRMWARE_NAMES[dev_type]
 
@@ -46,9 +47,17 @@ def download_and_extract_fw(dev_type, fwdir, fwuri=None):
     req.add_header('Referer', FIRMWARE_URIS[dev_type].get('referral', ''))
     req.add_header('User-Agent', 'Mozilla/5.0 (X11; U; Linux)')
 
+    hash = hashlib.sha512()
     with urllib.request.urlopen(req) as response:
         with open(fwarchive, 'wb') as out_file:
-            out_file.write(response.read())
+            data = response.read()
+            hash.update(data)
+            out_file.write(data)
+
+    actual_hash = hash.hexdigest()
+    if actual_hash != expected_hash:
+        raise Exception('Hash mismatch for driver download! Expected {}, got {}'.format(
+            expected_hash, actual_hash))
 
     subprocess.check_call([
         'innoextract', '--output-dir', fwdir, '--include', fwname, '--collisions', 'overwrite',
