@@ -13,6 +13,14 @@ $ sudo apt install open-fprintd fprintd-clients python3-validity
 $ fprintd-enroll
 ```
 
+On Arch Linux
+(Or Arch Linux based system, not including Artix)
+``` 
+$ yay -S python-validity
+(Press Enter twice when prompted)
+$ fprintd-enroll
+```
+
 ### Error situations
 If `fprintd-enroll` returns with `list_devices failed:`, you can check
 the logs of the `python3-validity` daemon using `$ sudo systemctl status python3-validity`.
