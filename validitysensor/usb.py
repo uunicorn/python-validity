@@ -17,6 +17,7 @@ class SupportedDevices(Enum):
     DEV_90 = (0x138a, 0x0090)
     DEV_97 = (0x138a, 0x0097)
     DEV_9a = (0x06cb, 0x009a)
+    DEV_a2 = (0x06cb, 0x00a2)
 
     @classmethod
     def from_usbid(cls, vendorid, productid):

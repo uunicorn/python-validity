@@ -9,6 +9,8 @@ def __load_blob(blob: str) -> bytes:
     elif usb.usb_dev().idVendor == 0x06cb:
         if usb.usb_dev().idProduct == 0x009a:
             from . import blobs_9a as blobs
+        elif usb.usb_dev().idProduct == 0x00a2:
+            from . import blobs_a2 as blobs
 
     globals()[blob] = getattr(blobs, blob)
     return globals()[blob]
