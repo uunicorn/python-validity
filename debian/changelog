@@ -1,3 +1,15 @@
+python-validity (0.11~ppa1) bionic; urgency=medium
+
+  * Support multiple fingers on DBus service
+  * Config file for SID mapping
+  * Run restart service on hybrid sleep as well
+  * Major code cleanup
+  * Verify hash of downloaded drivers
+  * Update python3-validity-suspend-restart.service
+  * Add installation instructions for Arch Linux
+
+ -- uunicorn <viktor.dragomiretskyy@gmail.com>  Thu, 10 Sep 2020 20:07:51 +1200
+
 python-validity (0.9~ppa1) bionic; urgency=medium
 
   * Actually check which user was passed to VerifyStart
