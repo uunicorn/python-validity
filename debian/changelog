@@ -1,3 +1,9 @@
+python-validity (0.12~ppa1) bionic; urgency=medium
+
+  * Implement Suspend/Resume methods to reset the TLS state 
+
+ -- uunicorn <viktor.dragomiretskyy@gmail.com>  Sat, 17 Oct 2020 17:51:14 +1300
+
 python-validity (0.11~ppa1) bionic; urgency=medium
 
   * Support multiple fingers on DBus service
