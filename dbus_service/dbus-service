@@ -63,6 +63,16 @@ class Device(dbus.service.Object):
         """Resolve user name to database object"""
         return db.lookup_user(self.user2identity(user))
 
+    @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='', out_signature='')
+    def Suspend(self):
+        logging.debug('In Suspend')
+
+    @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='', out_signature='')
+    def Resume(self):
+        logging.debug('In Resume')
+        tls.reset()
+        init.open_common()
+
     @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature="s", out_signature="as")
     def ListEnrolledFingers(self, user):
         try:

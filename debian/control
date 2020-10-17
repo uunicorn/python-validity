@@ -17,7 +17,7 @@ Depends: ${python3:Depends},
  python3-usb,
  python3-yaml,
  dbus,
- open-fprintd (>= 0.2~),
+ open-fprintd (>= 0.6~),
  innoextract (>= 1.6~)
 XB-Python-Version: ${python3:Versions}
 Description: Validity Fingerprint Sensor DBus Driver
