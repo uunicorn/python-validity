@@ -3,7 +3,7 @@
 from setuptools import setup
 
 setup(name='python-validity',
-      version='0.11',
+      version='0.12',
       py_modules=[],
       packages=['validitysensor'],
       scripts=[
