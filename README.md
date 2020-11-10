@@ -82,6 +82,7 @@ user_to_sid:
     "myusername": "S-1-5-21-1234567890-1234567890-1234567890-1001"
     "someotheruser": "S-1-5-21-1234567890-1234567890-1234567890-1003"
 ```
+Note the indentation; each entry has to be preceded by at least one space.
 
 ## Playground
 
