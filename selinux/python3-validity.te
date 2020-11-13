@@ -1,0 +1,19 @@
+
+module python3-validity 1.0;
+
+require {
+type init_tmp_t;
+type usr_t;
+type usb_device_t;
+type init_t;
+class chr_file { ioctl open read write };
+class file { execute map write };
+}
+
+#============= init_t ==============
+
+#!!!! This avc can be allowed using the boolean 'domain_can_mmap_files'
+allow init_t init_tmp_t:file map;
+allow init_t init_tmp_t:file execute;
+allow init_t usb_device_t:chr_file { ioctl open read write };
+allow init_t usr_t:file write;
