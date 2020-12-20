@@ -6,6 +6,8 @@ def __load_blob(blob: str) -> bytes:
             from . import blobs_90 as blobs
         elif usb.usb_dev().idProduct == 0x0097:
             from . import blobs_97 as blobs
+        elif usb.usb_dev().idProduct == 0x009d:
+            from . import blobs_9d as blobs
     elif usb.usb_dev().idVendor == 0x06cb:
         if usb.usb_dev().idProduct == 0x009a:
             from . import blobs_9a as blobs
