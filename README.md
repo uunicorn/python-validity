@@ -21,6 +21,15 @@ $ yay -S python-validity
 $ fprintd-enroll
 ```
 
+On Fedora Linux
+
+```
+$ sudo dnf copr enable tigro/python-validity
+$ sudo apt install open-fprintd fprintd-clients fprintd-clients-pam python3-validity
+...wait a bit...
+$ fprintd-enroll
+```
+
 ### Error situations
 If `fprintd-enroll` returns with `list_devices failed:`, you can check
 the logs of the `python3-validity` daemon using `$ sudo systemctl status python3-validity`.
