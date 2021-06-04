@@ -25,7 +25,7 @@ On Fedora Linux
 
 ```
 $ sudo dnf copr enable tigro/python-validity
-$ sudo apt install open-fprintd fprintd-clients fprintd-clients-pam python3-validity
+$ sudo dnf install open-fprintd fprintd-clients fprintd-clients-pam python3-validity
 ...wait a bit...
 $ fprintd-enroll
 ```
