@@ -1,6 +1,26 @@
 # python-validity
 Validity fingerprint sensor driver.
 
+Table of Contents
+=================
+
+   * [python-validity](#python-validity)
+      * [Setting up](#setting-up)
+         * [Error situations](#error-situations)
+            * [list devices failed ](#list-devices-failed)
+            * [Errors on startup](#errors-on-startup)
+            * [Fingerprint not working after waking up from suspend](#fingerprint-not-working-after-waking-up-from-suspend)
+      * [Enabling fingerprint for system authentication](#enabling-fingerprint-for-system-authentication)
+         * [The actual change from pam-auth-update](#the-actual-change-from-pam-auth-update)
+      * [Windows interoperability](#windows-interoperability)
+      * [Playground](#playground)
+         * [Initialize a session](#initialize-a-session)
+         * [Enroll a new user](#enroll-a-new-user)
+         * [Delete database record (user/finger/whatever)](#delete-database-record-userfingerwhatever)
+         * [Identify a finger (scan)](#identify-a-finger-scan)
+      * [DBus service](#dbus-service)
+      * [Debugging](#debugging)
+
 ## Setting up
 
 On Ubuntu system:
@@ -31,9 +51,14 @@ $ fprintd-enroll
 ```
 
 ### Error situations
+
+#### List devices failed
+
 If `fprintd-enroll` returns with `list_devices failed:`, you can check
 the logs of the `python3-validity` daemon using `$ sudo systemctl status python3-validity`.
 If it's not running, you can enable and/or start it by substituting `status` with `enable` or `start`.
+
+#### Errors on startup
 
 It `systemctl status python3-validity` complains about errors on startup, you may need to factory-reset the fingerprint chip. Do that like so:
 ```
@@ -49,6 +74,13 @@ $ sudo python3 /usr/share/python-validity/playground/factory-reset.py
 
 $ sudo systemctl start python3-validity
 $ fprintd-enroll
+```
+
+#### Fingerprint not working after waking up from suspend 
+
+Enable *open-fprintd-resume* and *open-fprintd-suspend* services:
+```
+$ sudo systemctl enable open-fprintd-resume open-fprintd-suspend
 ```
 
 For even more error procedures, check [this Arch comment thread](https://aur.archlinux.org/packages/python-validity/#comment-755904) or [this python-validity bug comment thread](https://github.com/uunicorn/python-validity/issues/3).
