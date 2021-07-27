@@ -194,7 +194,7 @@ class Device(dbus.service.Object):
         return hexlify(tls.app(unhexlify(cmd))).decode()
 
 
-backoff_file = '/usr/share/python-validity/backoff'
+backoff_file = '/var/run/python-validity/backoff'
 
 
 # I don't know how to tell systemd to backoff in case of multiple instance of the same template service, help!
