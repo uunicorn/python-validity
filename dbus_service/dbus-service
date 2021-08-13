@@ -241,7 +241,7 @@ def main():
     # Load and perform basic validation of config file.
     try:
         with (args.configpath / 'dbus-service.yaml').open(mode='rt') as configfd:
-            config = yaml.safe_load(configfd, Loader=yaml.BaseLoader)
+            config = yaml.safe_load(configfd)
     except FileNotFoundError:
         # No configuration file. Create default
         config = {'user_to_sid': {}}
