@@ -1,3 +1,11 @@
+python-validity (0.13~ppa1) bionic; urgency=medium
+
+  * Bugfixes
+  * Support for 138a:009d
+  * Fedora installation items
+
+ -- unicorn <viktor.dragomiretskyy@gmail.com>  Sun, 26 Sep 2021 13:03:20 +1300
+
 python-validity (0.12~ppa1) bionic; urgency=medium
 
   * Implement Suspend/Resume methods to reset the TLS state 
