@@ -140,14 +140,7 @@ class Device(dbus.service.Object):
     def EnrollStart(self, user, finger_name):
         logging.debug('In EnrollStart %s for %s' % (finger_name, user))
 
-        # left-ring-finger => LH
-        #hand = 'LH' if finger_name[0] == 'l' else 'RH'
-        # left-ring-finger => RING_FINGER
-        #generic_finger = '_'.join(finger_name.split('-')[1:]).upper()
-        #winbio_name = 'WINBIO_ANSI_381_POS_' + hand + '_' + generic_finger
-
         usr = self.user2identity(user)
-        #index = finger_ids.get(winbio_name, None)
         index = finger_ids.get(finger_name, None)
 
         def update_cb(rsp, e):
