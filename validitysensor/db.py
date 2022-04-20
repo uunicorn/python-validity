@@ -7,7 +7,7 @@ from .flash import call_cleanups
 from .sid import SidIdentity, sid_from_bytes
 from .tls import tls
 from .util import assert_status
-from .winbio_constants import finger_names
+from .fprint_constants import finger_names
 
 
 class UserStorage:
