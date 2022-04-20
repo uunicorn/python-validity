@@ -27,7 +27,7 @@ from validitysensor.sensor import sensor, RebootException
 from validitysensor.sid import sid_from_string
 from validitysensor.tls import tls
 from validitysensor.usb import usb
-from validitysensor.fprint_constants import finger_ids
+from validitysensor.fingerprint_constants import finger_ids
 
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 
