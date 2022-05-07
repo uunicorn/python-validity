@@ -23,7 +23,7 @@ from .util import assert_status, unhex
 calib_data_path = '/usr/share/python-validity/calib-data.bin'
 
 line_update_type1_devices = [
-    0xB5, 0x885, 0xB3, 0x143B, 0x1055, 0xE1, 0x8B1, 0xEA, 0xE4, 0xED, 0x1825, 0x1FF5, 0x199
+    0xB5, 0x885, 0xB3, 0x143B, 0x1055, 0xE1, 0x8B1, 0xEA, 0xE4, 0xED, 0x1825, 0x1FF5, 0x199, 0x581
 ]
 
 
@@ -198,7 +198,8 @@ def clip(x: int):
 
 def scale(x: int):
     x -= 0x80
-    x = int(x * 10 / 0x22)  # TODO: scaling factor depends on a device
+    #x = int(x * 10 / 0x22)  # TODO: scaling factor depends on a device
+    x = int(x * 10 / 0x1b)  # FIXME!!! Don't merge me like this - it'll break all other devices!
     return clip(x)
 
 
@@ -235,6 +236,10 @@ class Sensor:
             self.key_calibration_line = 0x48  # TODO 48 is just a guess -- find it
             self.calibration_frames = 6  # TODO: workout where it's really comming from
             self.calibration_iterations = 0
+        elif self.device_info.type == 0x581:
+            self.key_calibration_line = 0x38
+            self.calibration_frames = 3
+            self.calibration_iterations = 3
         else:
             raise Exception('Device %s is not supported (sensor type 0x%x)' %
                             (self.device_info.name, self.device_info.type))
