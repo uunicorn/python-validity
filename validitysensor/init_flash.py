@@ -156,7 +156,7 @@ def init_flash():
     # Wipe newly created partitions clean
     erase_flash(1)
     erase_flash(2)
-    erase_flash(5)
+    erase_flash(3)
     erase_flash(6)
     erase_flash(4)
 
