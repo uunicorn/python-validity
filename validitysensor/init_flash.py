@@ -19,21 +19,23 @@ from .tls import tls, hs_key, crt_hardcoded
 from .usb import usb
 from .util import assert_status, unhex
 
+# FIXME!! this table is for 0092, don't merge as-is!
 flash_layout_hardcoded = [
-    #             id  type  access  offset       size
-    #                       lvl
-    PartitionInfo(1, 4, 7, 0x00001000, 0x00001000),  # cert store
-    PartitionInfo(2, 1, 2, 0x00002000, 0x0003e000),  # xpfwext
-    PartitionInfo(5, 5, 3, 0x00040000, 0x00008000),  # ???
-    PartitionInfo(6, 6, 3, 0x00048000, 0x00008000),  # calibration data
-    PartitionInfo(4, 3, 5, 0x00050000, 0x00080000),  # template database
+    #             id  typ access  offset       size
+    #                     lvl
+    PartitionInfo(1, 4, 7,    0x00001000, 0x00001000), # cert store
+    PartitionInfo(2, 1, 2,    0x00002000, 0x00055000), # xpfwext
+    PartitionInfo(6, 6, 3,    0x00057000, 0x00008000), # calibration data
+    PartitionInfo(3, 2, 0x17, 0x0005f000, 0x0004f000), # 
+    PartitionInfo(4, 3, 5,    0x000ae000, 0x00052000), # template database
 ]
 
 partition_signature = unhex('''
-1db02a886b007e2b47263bb8fe30bd64a1f58bea7b25f1e1ba9ae09add7ecff36333f8198339cdd713f043633710a17bc7b3f418f1d8ff435a1bf47f065dffca
-727109152217fce73bf2bf8e01a1641f6a24b0c492a6a3f10114057275846842b1c8b66bd6700738524d4471bca3315ba23bb832743220ad195b60558aa79a3e
-deb2604834e2bb62e890b0ce405b3b8ef2fec2aab3e22bff23f89a58ff0dc015fece5d3ed3f5496ace879a92980aec9d85eb7e9df245eae03a41acfd4e7d1cb1
-dbd0df42d534904de00b6389f68867646e9d7c3d0b1dffd74070b2d0f2049b9f1dc7b0c9651c59be3ea891674725e1f2f7a484a941615b80211105978369cf71
+d6b3f8c9307d0e6de3676178c18b80203fd5126ba026216c14e7e9d097a185c06728a4c0b4dcb44c8160c572672a5c3019fdf02c2143c01
+d6da176e8857ca0dd4524e0e79126aaf6d90c3de3b2d50156eaff87c7e92ffb770516959fa2f0d8aad0249cc8d8365ec0c2d0548d220dcc
+4413e5b4844eb69ac05997a6cf32ddf6b6ee8f8ee50c6534c1fdc7c65618957bb74b97c7f49a56120f95f2793d9c2775ee4519cd7005ad6
+b46d1791a8758a89e4530529a28084a002c1bf55a81f6b710185c096d16950ae2dc6da0c16dd03b6fd19354c317ce3bf828c755c6e887d0
+61feae643bb80437f2654d940dfea278ac6611c9df3d04e0d107fb7f78a667417bb1
 ''')
 
 crypto_backend = default_backend()
