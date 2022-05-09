@@ -196,12 +196,6 @@ def clip(x: int):
     return x & 0xff
 
 
-def scale(x: int):
-    x -= 0x80
-    #x = int(x * 10 / 0x22)  # TODO: scaling factor depends on a device
-    x = int(x * 10 / 0x1b)  # FIXME!!! Don't merge me like this - it'll break all other devices!
-    return clip(x)
-
 
 def add(l: int, r: int):
     # Make signed
@@ -240,6 +234,10 @@ class Sensor:
             self.key_calibration_line = 0x38
             self.calibration_frames = 3
             self.calibration_iterations = 3
+        elif self.device_info.type == 0x1825:
+            self.key_calibration_line = 0x38
+            self.calibration_frames = 3
+            self.calibration_iterations = 2
         else:
             raise Exception('Device %s is not supported (sensor type 0x%x)' %
                             (self.device_info.name, self.device_info.type))
@@ -377,11 +375,16 @@ class Sensor:
 
         return frame
 
+    def scale(self, x: int):
+        x -= 0x80
+        x = int(x * self.type_info.scale_mul / self.type_info.scale_div)
+        return clip(x)
+
     def process_calibration_results(self, cooked_data: bytes):
         frame = chunks(cooked_data, self.bytes_per_line)
 
         # apply scaling factors
-        frame = [f[:8] + bytes(map(scale, f[8:])) for f in frame]
+        frame = [f[:8] + bytes([self.scale(x) for x in f[8:]]) for f in frame]
         frame = b''.join(frame)
 
         if len(self.calib_data) > 0:

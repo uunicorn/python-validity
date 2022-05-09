@@ -14,19 +14,22 @@ class SensorTypeInfo:
                 return i
 
     def __init__(self, sensor_type: int, bytes_per_line: int, repeat_multiplier: int,
-                 lines_per_calibration_data: int, line_width: int, calibration_blob: str):
+                 lines_per_calibration_data: int, line_width: int, scale_mul: int, 
+                 scale_div: int, calibration_blob: str):
         self.sensor_type = sensor_type
         self.repeat_multiplier = repeat_multiplier
         self.lines_per_calibration_data = lines_per_calibration_data
         self.line_width = line_width
         self.bytes_per_line = bytes_per_line
+        self.scale_mul = scale_mul
+        self.scale_div = scale_div
         self.calibration_blob = unhexlify(calibration_blob)
 
     def __repr__(self):
         calibration_blob = hexlify(self.calibration_blob).decode()
-        return 'SensorTypeInfo(sensor_type=0x%04x, bytes_per_line=0x%x, repeat_multiplier=%d, lines_per_calibration_data=%d, line_width=%d, calibration_blob=%s)' % (
+        return 'SensorTypeInfo(sensor_type=0x%04x, bytes_per_line=0x%x, repeat_multiplier=%d, lines_per_calibration_data=%d, line_width=%d, scale_mul=%d, scale_div=%d, calibration_blob=%s)' % (
             self.sensor_type, self.bytes_per_line, self.repeat_multiplier,
-            self.lines_per_calibration_data, self.line_width, repr(calibration_blob))
+            self.lines_per_calibration_data, self.line_width, self.scale_mul, self.scale_div, repr(calibration_blob))
 
 
 def fuzzy(expected, actual):
