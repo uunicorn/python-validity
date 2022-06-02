@@ -1,3 +1,9 @@
+python-validity (0.14~ppa1) bionic; urgency=medium
+
+  * Retry establishing TLS on Resume in case if it was already established. 
+
+ -- unicorn <viktor.dragomiretskyy@gmail.com>  Fri, 03 Jun 2022 08:27:55 +1200
+
 python-validity (0.13~ppa1) bionic; urgency=medium
 
   * Bugfixes
