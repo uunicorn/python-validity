@@ -70,7 +70,10 @@ class Device(dbus.service.Object):
     def Resume(self):
         logging.debug('In Resume')
         tls.reset()
-        init.open_common()
+        try:
+            init.open_common()
+        except:
+            init.open_common()
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature="s", out_signature="as")
     def ListEnrolledFingers(self, user):
