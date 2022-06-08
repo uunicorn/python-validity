@@ -7,6 +7,9 @@ from hashlib import sha256
 from struct import pack, unpack
 from time import sleep
 
+from numpy import float32
+
+
 from usb import core as usb_core
 
 from . import timeslot as prg
@@ -90,7 +93,8 @@ def factory_reset():
 class RomInfo:
     @classmethod
     def get(cls):
-        rsp = tls.cmd(b'\x01')
+        #rsp = tls.cmd(b'\x01')
+        rsp = unhexlify('0000f0b05e54a40000000607013000010000b1018a005c540023000000000100000003d10007')
         assert_status(rsp)
         rsp = rsp[2:]
         return cls(*unpack('<LLBBxBxxxB', rsp[0:0x10]))
@@ -104,7 +108,8 @@ class RomInfo:
 
 
 def identify_sensor():
-    rsp = tls.cmd(b'\x75')
+    #rsp = tls.cmd(b'\x75')
+    rsp = unhexlify('00000000000041009001')
     assert_status(rsp)
     rsp = rsp[2:]
 
@@ -125,7 +130,12 @@ def identify_sensor():
 #      6c010000 1400 0e00 0f00 0080 05550007 7701002805720000080100020811e107
 #      88010000 0c00 0e00 1200 0080 07000000 7002 7800 7002 7800
 def get_factory_bits(tag: int):
-    rsp = tls.cmd(pack('<B H HL', 0x6f, tag, 0, 0))
+    #rsp = tls.cmd(pack('<B H HL', 0x6f, tag, 0, 0))
+    if tag == 0xa00:
+        rsp = unhexlify('0000a805000000000000')
+    elif tag == 0xe00:
+        rsp = unhexlify('0000a8050000060000000800000074000e0003000080070000007e807f78817d737b827e7e7b74868088888285898987898b8b8a8d8e8d86878d868a888689898486827a8a8c8188878b8e8c90918f85848b8a8c8f908a828f8494938a8e928d8f8d8a8f8e8d90918f8e898987838d8d8287888582898a90938282898c8d8e8a848479797d7b72787e808400000008000e000200000000000000410090019400000008000e00080000802518000000000000a400000004000e00050000802d7f0300b000000034020e000c00008007000000f5fafdfdfbfaf6f4f7fc010201fe02040400fdfbf8f7f6f9fc020603fcf7f7f9fcfbf8f9f9fcfbf9fafa00010201020201fffffffefcfcfc00040407090b0702020304070d0f0f0d0f10111012171b1b17161818191a1d1c1a140f0905fffcfc00fef9f4f3f4f6f7f9fcfcf8f3edecededf5fbfdf9f6f6f9f7fafdfefdfbf8f3f2f3f4f4f9fafe02080d0d0b0704060c0d0906080c0f0e0a030205070601fdfbf8f5f8060f0f02fdfcfafbfc01030304040604fffdfcfe030507080d0e0c04040402fdfd04080902fbf7f5f4f4f1f2f7faf7f9fe00fdf7f9fdfdfcfd01040706f902fefe0100fdf9faf9f8f4f3f6fbfefdf9f5f4f2f2f4f5fbfcfcf8f7fafdff00020205070e0b06060b11121211101312110702ff0103fffe02080b070202030a0a0705050401faf5eeeceaedeef1f0eff2f2f0ebe9ebeaecebedeceff1f5f7fafefff9f8fa0408080b080a050400fee2fbfffefdfdfcf8fcfefcf6f2f1f1f3f3f7fb0000fbfafcfefffcfe040a0e0f121413100d0c0d0c0a07060c111516191813130f0f0d12130f0f131b1a161412140f0b02020201fcf7f8f9f9f9fafdf9f6fafcfdf7f5f4f5f4f3f0f4f5f6f4f3f4f7f9fa00050e0f0d0f0e0805070d0eedf4f6f5f8fe070b0502fdfcf9f6f8f7f8f6f8f8f9fbfefefeff020103030302010404060303020a10161a1a1b19140e06040100fdfaf6f1f4f8fbfbf5f3f5fe02080e0d0b070605080c0d0b0703fffefffbfaf7fafd0000fffdfcfcfcfbf7f2eff1f0f5f6f8f5f4f6f7fb0107050203ec02000014000e000f00008005550005950100260587000743010004031be107')
+
     assert_status(rsp)
     rsp = rsp[2:]
 
@@ -193,14 +203,9 @@ def clip(x: int):
     if x > 127:
         x = 127
 
-    return x & 0xff
+    return x
 
 
-
-def add(l: int, r: int):
-    # Make signed
-    l, r = unpack('bb', pack('BB', l, r))
-    return clip(l + r)
 
 
 def chunks(b: bytes, l: int):
@@ -219,7 +224,7 @@ class Sensor:
     def open(self):
         self.device_info = identify_sensor()
 
-        logging.info('Opening sensor: %s' % self.device_info.name)
+        logging.info('Opening sensor: %s (type %04x)' % (self.device_info.name, self.device_info.type))
         self.type_info = SensorTypeInfo.get_by_type(self.device_info.type)
 
         if self.device_info.type == 0x199:
@@ -342,10 +347,10 @@ class Sensor:
 
     def average(self, raw_calib_data: bytes):
         frame_size = self.lines_per_frame * self.bytes_per_line
-        interleave_lines = self.lines_per_frame // self.type_info.lines_per_calibration_data  # 2, TODO: algo is quite different when it is 1
+        overscan = self.lines_per_frame // self.type_info.lines_per_calibration_data  # 2, TODO: algo is quite different when it is 1
         input_frames = self.calibration_frames
 
-        if interleave_lines > 1:
+        if overscan > 1:
             if input_frames > 1:
                 # skip the first frame
                 input_frames -= 1
@@ -354,7 +359,7 @@ class Sensor:
             frame = raw_calib_data[base_address:base_address + frame_size]
 
             # split into groups of lines
-            frame = chunks(frame, interleave_lines * self.bytes_per_line)
+            frame = chunks(frame, overscan * self.bytes_per_line)
 
             # split group of lines into lines
             frame = [chunks(f, self.bytes_per_line) for f in frame]
@@ -380,29 +385,51 @@ class Sensor:
         x = int(x * self.type_info.scale_mul / self.type_info.scale_div)
         return clip(x)
 
+    def add(self, l: int, r: int):
+        if self.device_info.type == 0x1825:
+            orig = self.scale(l)
+
+            if orig == 0:
+                return 0
+
+            if orig == -128 or orig == 127 or abs(l - r) < 10:
+                # FIXME Yep, use integer division and assign to float variable.
+                # This looks like a bug in original Windows driver, same as usage of float32
+                # We'll keep it as-is for now to make sure that given the same input,
+                # python-validity generates exactly the same commands as the Windows driver.
+                corr = self.type_info.scale_div // self.type_info.scale_mul
+            else:
+                corr = float32(l - r) / float32(orig)
+
+                if corr == 0:
+                    # same as above
+                    corr = self.type_info.scale_div // self.type_info.scale_mul
+
+            return clip(int(float32(l - 0x80)/corr)) & 0xff
+        else:
+            l, r = self.scale(l), self.scale(r)
+            return clip(l + r) & 0xff
+
     def process_calibration_results(self, cooked_data: bytes):
         frame = chunks(cooked_data, self.bytes_per_line)
-
-        # apply scaling factors
-        frame = [f[:8] + bytes([self.scale(x) for x in f[8:]]) for f in frame]
-        frame = b''.join(frame)
 
         if len(self.calib_data) > 0:
             # Not the first calibration run. Combine results
             # split previous calibration info into lines
-            lll = chunks(self.calib_data, self.bytes_per_line)
-
-            # split next calibration info into lines
-            rrr = chunks(frame, self.bytes_per_line)
+            prev_frame = chunks(self.calib_prev_frame, self.bytes_per_line)
 
             # Don't touch the first 8 bytes of each line, add everything else as signed characters, clipping the values
             combined = [
-                ll[:8] + bytes([add(l, r) for l, r in zip(ll[8:], rr[8:])])
-                for ll, rr in zip(lll, rrr)
+                ll[:8] + bytes([self.add(l, r) for l, r in zip(ll[8:], rr[8:])]) for ll, rr in zip(prev_frame, frame)
             ]
             self.calib_data = bytes(b''.join(combined))
         else:
-            self.calib_data = frame
+            # apply scaling factors
+            frame = [f[:8] + bytes([self.scale(x) & 0xff for x in f[8:]]) for f in frame]
+
+            self.calib_data = b''.join(frame)
+
+        self.calib_prev_frame = cooked_data
 
     def get_key_line(self):
         if len(self.calib_data) > 0:
