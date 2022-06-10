@@ -15,3 +15,6 @@ build
 dist
 python_validity.egg-info/
 tls.dict
+
+# Warning: tester's biometric data:
+validitysensor/fakeusb.py

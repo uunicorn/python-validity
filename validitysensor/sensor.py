@@ -35,18 +35,18 @@ def glow_start_scan():
     cmd = unhexlify(
         '3920bf0200ffff0000019900200000000099990000000000000000000000000020000000000000000000000000ffff000000990020000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
     )
-    assert_status(tls.app(cmd))
+    assert_status(tls.cmd(cmd))
 
 
 def glow_end_scan():
     cmd = unhexlify(
         '39f4010000f401000001ff002000000000ffff0000000000000000000000000020000000000000000000000000f401000000ff0020000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
     )
-    assert_status(tls.app(cmd))
+    assert_status(tls.cmd(cmd))
 
 
 def get_prg_status():
-    return tls.app(unhexlify('5100000000'))
+    return tls.cmd(unhexlify('5100000000'))
 
 
 def wait_till_finished():
@@ -60,7 +60,7 @@ def wait_till_finished():
 
 
 def get_prg_status2():
-    return tls.app(unhexlify('5100200000'))
+    return tls.cmd(unhexlify('5100200000'))
 
 
 def read_hw_reg32(addr: int):
@@ -474,12 +474,22 @@ class Sensor:
                 0x2e, unhexlify('0200180002000000700070004d010000a0008c003c32321e3c0a0202')
             ]]
         elif mode == CaptureMode.ENROLL:
-            chunks += [[
-                0x26,
-                unhexlify(
-                    'fbb20f0000000f00300000008700020067000a00018000000a0200000b19000050c360ea01091000'
-                )
-            ]]
+            # Finger Detect
+            # TODO This is not fully hardcoded - analyse how it is constructed
+            if self.device_info.type == 0x1825:
+                chunks += [[
+                    0x26,
+                    unhexlify(
+                        'fbb20f0000000f00300000005400020034000a00018000000a0200000b19000050c360ea01091000'
+                    )
+                ]]
+            else:
+                chunks += [[
+                    0x26,
+                    unhexlify(
+                        'fbb20f0000000f00300000008700020067000a00018000000a0200000b19000050c360ea01091000'
+                    )
+                ]]
             # Image Reconstruction. There is only one byte difference with the "identify" version. (same is true for 0097)
             chunks += [[
                 0x2e, unhexlify('0200180023000000700070004d010000a0008c003c32321e3c0a0202')
@@ -698,8 +708,9 @@ class Sensor:
             else:
                 logging.info('No calibration data on the flash. Calibrating...')
         else:
-            self.calib_data = b''
             logging.info('No calibration data was loaded. Calibrating...')
+
+        self.calib_data = b''
 
         for i in range(0, self.calibration_iterations):
             logging.debug('Calibration iteration %d...' % i)
@@ -728,7 +739,7 @@ class Sensor:
 
     def capture(self, mode: CaptureMode) -> typing.Tuple[int, int, int, int]:
         try:
-            assert_status(tls.app(self.build_cmd_02(mode)))
+            assert_status(tls.cmd(self.build_cmd_02(mode)))
 
             # start
             b = usb.wait_int()
@@ -769,10 +780,10 @@ class Sensor:
             return x, y, w1, w2
 
         finally:
-            tls.app(unhexlify('04'))  # capture stop if still running, cleanup
+            tls.cmd(unhexlify('04'))  # capture stop if still running, cleanup
 
     def enrollment_update_start(self, key: int) -> int:
-        rsp = tls.app(pack('<BLL', 0x68, key, 0))
+        rsp = tls.cmd(pack('<BLL', 0x68, key, 0))
         assert_status(rsp)
         new_key, = unpack('<L', rsp[2:])
 
@@ -781,16 +792,16 @@ class Sensor:
         return new_key
 
     def create_enrollment(self):
-        assert_status(tls.app(pack('<BL', 0x69, 1)))
+        assert_status(tls.cmd(pack('<BL', 0x69, 1)))
 
     def enrollment_update_end(self):
-        assert_status(tls.app(pack('<BL', 0x69, 0)))
+        assert_status(tls.cmd(pack('<BL', 0x69, 0)))
 
     # Generates interrupt
     def enrollment_update(self, prev: bytes):
         write_enable()
         try:
-            rsp = tls.app(b'\x6b' + prev)
+            rsp = tls.cmd(b'\x6b' + prev)
             assert_status(rsp)
         finally:
             call_cleanups()
@@ -901,7 +912,7 @@ class Sensor:
             stg_id = 0  # match against any storage
             usr_id = 0  # match against any user
             cmd = pack('<BBBHHHHH', 0x5e, 2, 0xff, stg_id, usr_id, 1, 0, 0)
-            rsp = tls.app(cmd)
+            rsp = tls.cmd(cmd)
             assert_status(rsp)
 
             b = usb.wait_int()
@@ -909,7 +920,7 @@ class Sensor:
                 raise Exception('Finger not recognized: %s' % hexlify(b).decode())
 
             # get results
-            rsp = tls.app(unhexlify('6000000000'))
+            rsp = tls.cmd(unhexlify('6000000000'))
             assert_status(rsp)
             rsp = rsp[2:]
 
@@ -926,7 +937,7 @@ class Sensor:
             return usrid, subtype, hsh
         finally:
             # cleanup, ignore any errors
-            tls.app(unhexlify('6200000000'))
+            tls.cmd(unhexlify('6200000000'))
 
     def identify(self, update_cb: typing.Callable[[Exception], None]):
         while True:
