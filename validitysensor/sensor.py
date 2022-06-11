@@ -458,24 +458,33 @@ class Sensor:
         chunks += [[0x17, b'']]
 
         if mode == CaptureMode.IDENTIFY:
-            # This type of fragment is not present in the debugging dump routine.
-            # It seems to be only used for identification and it looks almost identical to Finger Detect (0x26)
-            # Seems to be the same all the time for a given sensor and mostly hardcoded
-            # TODO: analyse construct_wtf_4e @0000000180090BF0
-            chunks += [[
-                0x4e,
-                unhexlify(
-                    'fbb20f0000000f00300000008700020067000a00018000000a0200000b1900008813b80b01091000'
-                )
-            ]]
+            # Finger Detect
+            # TODO This is not fully hardcoded - analyse how it is constructed
+            if self.device_info.type == 0x1825:
+                chunks += [[
+                    0x26,
+                    unhexlify(
+                        'fbb20f0000000f00300000005400020034000a00018000000a0200000b19000050c360ea01091000'
+                    )
+                ]]
+            else:
+                # This type of fragment is not present in the debugging dump routine.
+                # It seems to be only used for identification and it looks almost identical to Finger Detect (0x26)
+                # Seems to be the same all the time for a given sensor and mostly hardcoded
+                # TODO: analyse construct_wtf_4e @0000000180090BF0
+                chunks += [[
+                    0x4e,
+                    unhexlify(
+                        'fbb20f0000000f00300000008700020067000a00018000000a0200000b1900008813b80b01091000'
+                    )
+                ]]
+
             # Image Reconstruction.
             # TODO: analyse add_image_reconstruction_cmd_02_buff_list_item @000000018008EA70
             chunks += [[
                 0x2e, unhexlify('0200180002000000700070004d010000a0008c003c32321e3c0a0202')
             ]]
         elif mode == CaptureMode.ENROLL:
-            # Finger Detect
-            # TODO This is not fully hardcoded - analyse how it is constructed
             if self.device_info.type == 0x1825:
                 chunks += [[
                     0x26,
