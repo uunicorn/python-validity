@@ -40,10 +40,6 @@ crypto_backend = default_backend()
 
 
 def get_partition_signature():
-    if usb.usb_dev().idVendor == 0x138a:
-        if usb.usb_dev().idProduct == 0x0090:
-            return b''
-
     return partition_signature
 
 
