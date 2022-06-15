@@ -36,11 +36,24 @@ deb2604834e2bb62e890b0ce405b3b8ef2fec2aab3e22bff23f89a58ff0dc015fece5d3ed3f5496a
 dbd0df42d534904de00b6389f68867646e9d7c3d0b1dffd74070b2d0f2049b9f1dc7b0c9651c59be3ea891674725e1f2f7a484a941615b80211105978369cf71
 ''')
 
+flash_layout_hardcoded_0090 = [
+    #             id  type  access  offset       size
+    #                       lvl
+    PartitionInfo(1, 4, 7, 0x00001000, 0x00001000),  # cert store
+    PartitionInfo(2, 1, 2, 0x00002000, 0x0003e000),  # xpfwext
+    PartitionInfo(5, 5, 3, 0x00040000, 0x00008000),  # ???
+    PartitionInfo(6, 6, 3, 0x00048000, 0x00008000),  # calibration data
+    PartitionInfo(4, 3, 5, 0x00050000, 0x00030000),  # template database
+]
+
+partition_signature_0090 = unhex('''
+e44f7a80d6137794d330b5d026c328a73c907f3f653d411255b7c2f8b425d870a8a53c6630ca864b84590e3c6786f0d69be4bbab5736388f8527237a0a86bbce
+7ced9450c4964709e89ac535aa00787158e0a8d9b1fb75f0f7ae53d4bd11abfcf5ee67a5a71e248a426b3aff4567048fa93de65939ccfbe3f31149a82c64fbfd
+6a2a6cf748e1d9bd8562cf39b1a4b307b37be223317b1b817e364f2877d29d123731314aa627cbf234e0ea69a406a4735a03a45495023ef706bdb542c949d243
+ac2c08c00abf43faa5528a0a8e49b02c507b01b6f1c9abffc669d8c84d7e4a714da32aade7928eca9698b82bee6b72c642c9add80bbd7ccc4121b80220d52b8a
+''')
+
 crypto_backend = default_backend()
-
-
-def get_partition_signature():
-    return partition_signature
 
 
 def with_hdr(id: int, buf: bytes):
@@ -86,13 +99,13 @@ def serialize_partition(p: PartitionInfo):
     return b
 
 
-def partition_flash(info: FlashInfo, layout: typing.List[PartitionInfo], client_public):
+def partition_flash(info: FlashInfo, layout: typing.List[PartitionInfo], signature, client_public):
     logging.info('Detected Flash IC: %s, %d bytes' % (info.ic.name, info.ic.size))
 
     cmd = unhex('4f 0000 0000')
     cmd += with_hdr(0, serialize_flash_params(info.ic))
     cmd += with_hdr(1,
-                    b''.join([serialize_partition(p) for p in layout]) + get_partition_signature())
+                    b''.join([serialize_partition(p) for p in layout]) + signature)
     cmd += with_hdr(5, make_cert(client_public))
     cmd += with_hdr(3, crt_hardcoded)
     rsp = tls.cmd(cmd)
@@ -121,7 +134,15 @@ def init_flash():
     client_private = snums.private_value
     client_public = snums.public_numbers
 
-    partition_flash(info, flash_layout_hardcoded, client_public)
+    layout = flash_layout_hardcoded
+    signature = partition_signature
+
+    if usb.usb_dev().idVendor == 0x138a:
+        if usb.usb_dev().idProduct == 0x0090:
+            layout = flash_layout_hardcoded_0090
+            signature = partition_signature_0090
+
+    partition_flash(info, layout, signature, client_public)
 
     RomInfo.get()
     # ^ TODO: use the firmware version which to lookup pubkey for server cert validation
