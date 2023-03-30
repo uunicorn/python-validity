@@ -23,7 +23,7 @@ Table of Contents
 
 ## Setting up
 
-On Ubuntu system:
+### Ubuntu
 ```
 $ sudo apt remove fprintd
 $ sudo add-apt-repository ppa:uunicorn/open-fprintd
@@ -33,7 +33,7 @@ $ sudo apt install open-fprintd fprintd-clients python3-validity
 $ fprintd-enroll
 ```
 
-On Arch Linux
+### Arch
 (Or Arch Linux based system, not including Artix)
 ``` 
 $ yay -S python-validity
@@ -41,13 +41,17 @@ $ yay -S python-validity
 $ fprintd-enroll
 ```
 
-On Fedora Linux
-
+### Fedora
 ```
 $ sudo dnf copr enable tigro/python-validity
 $ sudo dnf install open-fprintd fprintd-clients fprintd-clients-pam python3-validity
-...wait a bit...
+```
+Check SELinux "Problem Reporting" (gnome-abrt) and enable dbus-service what is requesting.
+```
+$ sudo systemctl start python3-validity
 $ fprintd-enroll
+$ sudo authselect enable-feature with-fingerprint
+$ sudo authselect apply-changes
 ```
 
 ### Error situations
