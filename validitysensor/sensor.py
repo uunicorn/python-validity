@@ -20,7 +20,7 @@ from .usb import usb, CancelledException
 from .util import assert_status, unhex
 
 # TODO: this should be specific to an individual device (system may have more than one sensor)
-calib_data_path = '/usr/share/python-validity/calib-data.bin'
+calib_data_path = '/var/run/python-validity/calib-data.bin'
 
 line_update_type1_devices = [
     0xB5, 0x885, 0xB3, 0x143B, 0x1055, 0xE1, 0x8B1, 0xEA, 0xE4, 0xED, 0x1825, 0x1FF5, 0x199
