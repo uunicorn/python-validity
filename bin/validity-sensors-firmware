@@ -32,7 +32,7 @@ from usb import core as usb_core
 from validitysensor.firmware_tables import FIRMWARE_NAMES, FIRMWARE_URIS
 from validitysensor.usb import SupportedDevices
 
-python_validity_data = '/usr/share/python-validity/'
+python_validity_data = '/var/run/python-validity/'
 
 
 def download_and_extract_fw(dev_type, fwdir, fwuri=None):

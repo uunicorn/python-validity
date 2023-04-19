@@ -8,7 +8,7 @@ from .flash import write_flash_all, write_fw_signature, get_fw_info
 from .sensor import reboot, write_hw_reg32, read_hw_reg32, identify_sensor
 from .usb import usb, SupportedDevices
 
-firmware_home = '/usr/share/python-validity'
+firmware_home = '/var/run/python-validity'
 
 
 def default_fwext_name():
