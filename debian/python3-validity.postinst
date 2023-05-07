@@ -4,7 +4,6 @@ set -e
 #DEBHELPER#
 
 if [ "$1" = "configure" ]; then
-    mkdir -p /var/run/python-validity || true
     validity-sensors-firmware || true
     systemctl daemon-reload || true
     udevadm control --reload-rules || true

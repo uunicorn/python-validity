@@ -23,6 +23,7 @@ from usb import core as usb_core
 
 from validitysensor import init
 from validitysensor.db import subtype_to_string, db, SidIdentity, User
+from validitysensor.init_data_dir import PYTHON_VALIDITY_DATA_DIR, init_data_dir
 from validitysensor.sensor import sensor, RebootException
 from validitysensor.sid import sid_from_string
 from validitysensor.tls import tls
@@ -35,6 +36,7 @@ INTERFACE_NAME = 'io.github.uunicorn.Fprint.Device'
 
 loop = GLib.MainLoop()
 
+init_data_dir()
 
 class NoEnrolledPrints(dbus.DBusException):
     _dbus_error_name = 'net.reactivated.Fprint.Error.NoEnrolledPrints'
@@ -191,7 +193,7 @@ class Device(dbus.service.Object):
         return hexlify(tls.app(unhexlify(cmd))).decode()
 
 
-backoff_file = '/var/run/python-validity/backoff'
+backoff_file = PYTHON_VALIDITY_DATA_DIR + 'backoff'
 
 
 # I don't know how to tell systemd to backoff in case of multiple instance of the same template service, help!

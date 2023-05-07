@@ -29,10 +29,10 @@ import urllib.request
 
 from usb import core as usb_core
 
+from validitysensor.init_data_dir import PYTHON_VALIDITY_DATA_DIR
 from validitysensor.firmware_tables import FIRMWARE_NAMES, FIRMWARE_URIS
 from validitysensor.usb import SupportedDevices
 
-python_validity_data = '/var/run/python-validity/'
 
 
 def download_and_extract_fw(dev_type, fwdir, fwuri=None):
@@ -99,4 +99,4 @@ if __name__ == "__main__":
 
     with tempfile.TemporaryDirectory() as fwdir:
         fwpath = download_and_extract_fw(dev_type, fwdir, fwuri=args.driver_uri)
-        shutil.copy(fwpath, python_validity_data)
+        shutil.copy(fwpath, PYTHON_VALIDITY_DATA_DIR)
