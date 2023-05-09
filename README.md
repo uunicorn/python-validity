@@ -60,7 +60,7 @@ If it's not running, you can enable and/or start it by substituting `status` wit
 
 #### Errors on startup
 
-It `systemctl status python3-validity` complains about errors on startup, you may need to factory-reset the fingerprint chip. Do that like so:
+If `systemctl status python3-validity` complains about errors on startup, you may need to factory-reset the fingerprint chip. Do that like so:
 ```
 $ sudo systemctl stop python3-validity
 $ sudo validity-sensors-firmware
@@ -75,6 +75,18 @@ $ sudo python3 /usr/share/python-validity/playground/factory-reset.py
 $ sudo systemctl start python3-validity
 $ fprintd-enroll
 ```
+If you are running TLP, be sure to add the lsusb id for the fingerprint reader to the [USB_DENYLIST](https://linrunner.de/tlp/settings/usb.html#usb-denylist)
+
+
+```
+$ sudo vim /etc/tlp.conf
+
+# add this to /etc/tlp.conf and save
+USB_DENYLIST="<paste fingerprint reader id here>"
+
+$ sudo tlp usb
+```
+
 
 #### Fingerprint not working after waking up from suspend 
 
