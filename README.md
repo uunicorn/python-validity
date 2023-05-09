@@ -41,6 +41,57 @@ $ yay -S python-validity
 $ fprintd-enroll
 ```
 
+On Manjaro KDE
+
+ALWAYS HAVE A BACKUP!
+
+```sh
+$ trizen -S open-fprintd fprintd-clients python-validity
+$ fprintd-enroll
+```
+If the enroll keeps failing you can try using the KDE menu in system setings -> users -> user to add a fingerprint.
+
+Add the following lines to /etc/pam.d/[sddm](https://wiki.archlinux.org/title/SDDM#Using_a_fingerprint_reader)
+```sh
+    auth 			[success=1 new_authtok_reqd=1 default=ignore]  	pam_unix.so try_first_pass likeauth nullok
+    auth 			sufficient  	pam_fprintd.so
+```    
+
+Add the following lines to /etc/pam.d/system-auth (Note that pam_unix.so appears in the file already, modify accordingly or delete the line and copy directly from below.)
+Refer to [this guide](https://wiki.archlinux.org/title/Fprint#Login_configuration) for more options.
+```sh
+    auth 			sufficient  	pam_unix.so try_first_pass likeauth nullok
+    auth 			sufficient  	pam_fprintd.so
+```
+
+Create a new file `python3-validity-suspend-restart.service` in /etc/systemd/system with the following script [verified for T480s](https://bytemeta.vip/repo/uunicorn/python-validity/issues/106) and T480:
+```sh
+    [Unit]
+    Description=Restart services to fix fingerprint integration
+    After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+
+    [Service]
+    Type=oneshot
+    ExecStart=systemctl restart open-fprintd.service python3-validity.service
+
+    [Install]
+    WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+    
+```
+
+Then:
+```sh
+# systemctl enable python3-validity-suspend-restart.serivce
+# systemctl enable open-fprintd-resume open-fprintd-suspend 
+```
+
+Restart the system.
+
+To use the fingerprint sensor press enter when asked for a password. After these steps it should work including logging in and resuming from sleep or hibernation.
+The one thing that gets broken is KDE Wallet auto-login. For a fix please refer to [this guide](https://wiki.archlinux.org/title/KDE_Wallet#Unlock_KDE_Wallet_automatically_on_login). A verified method is to set an empty Kwallet password and enable "Prompt when an application accesses a wallet" in KWalletManager.
+ 
+If something doesn't work as expected and you lose the ability to log into the system - don't worry. Boot up from a different system (from a usb drive or whatever) and revert the changes made in /etc/pam.d.
+
 On Fedora Linux
 
 ```
