@@ -75,7 +75,7 @@ $ sudo python3 /usr/share/python-validity/playground/factory-reset.py
 $ sudo systemctl start python3-validity
 $ fprintd-enroll
 ```
-If you are running TLP, be sure to add the lsusb id for the fingerprint reader to the [USB_DENYLIST](https://linrunner.de/tlp/settings/usb.html#usb-denylist)
+If you are running TLP, be sure to add the fingerprint reader to the [USB_DENYLIST](https://linrunner.de/tlp/settings/usb.html#usb-denylist)
 
 
 ```
@@ -85,6 +85,10 @@ $ sudo vim /etc/tlp.conf
 USB_DENYLIST="<paste fingerprint reader id here>"
 
 $ sudo tlp usb
+
+# sure denylist setting is applied
+
+$ sudo tlp-stat --usb
 ```
 
 
