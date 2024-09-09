@@ -35,7 +35,9 @@ $ fprintd-enroll
 
 On Arch Linux
 (Or Arch Linux based system, not including Artix)
-``` 
+```
+$ yay -S glib2-devel
+(needed until the aur package gets updated with this as a makedeps)
 $ yay -S python-validity
 (Press Enter twice when prompted)
 $ fprintd-enroll
