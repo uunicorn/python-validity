@@ -122,10 +122,13 @@ class Usb:
 
     def wait_int(self):
         self.cancel = False
+        max_retries = 3  # Number of retry attempts before giving up
+        retry_count = 0
+        timeout_ms = 500  # Increased timeout from 100ms to 500ms
 
         while True:
             try:
-                resp = self.dev.read(131, 1024, timeout=100)
+                resp = self.dev.read(131, 1024, timeout=timeout_ms)
                 resp = bytes(resp)
                 self.trace('<int< %s' % hexlify(resp).decode())
                 return resp
@@ -133,6 +136,15 @@ class Usb:
                 if e.errno == errno.ETIMEDOUT:
                     if self.cancel:
                         raise CancelledException()
+                    
+                    # Add retry logic for transient timeouts
+                    retry_count += 1
+                    if retry_count <= max_retries:
+                        self.trace(f'USB timeout, retrying ({retry_count}/{max_retries})...')
+                        continue
+                    else:
+                        self.trace(f'USB timeout after {max_retries} retries, giving up')
+                        raise
                 else:
                     raise e
 
