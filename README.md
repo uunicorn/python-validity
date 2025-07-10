@@ -137,6 +137,9 @@ user_to_sid:
 ```
 Note the indentation; each entry has to be preceded by at least one space.
 
+Restart the `python3-validity` daemon using `$ sudo systemctl restart python3-validity.service`.
+Your fingerprints registered in Windows can now be used for authentication.
+
 ## Playground
 
 This package contains a set of scripts you can use to do a low-level debugging of the sensor protocol.
