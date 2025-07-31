@@ -80,7 +80,7 @@ $ fprintd-enroll
 
 Enable *open-fprintd-resume* and *open-fprintd-suspend* services:
 ```
-$ sudo systemctl enable open-fprintd-resume open-fprintd-suspend
+$ sudo systemctl enable --now open-fprintd-resume open-fprintd-suspend
 ```
 
 For even more error procedures, check [this Arch comment thread](https://aur.archlinux.org/packages/python-validity/#comment-755904) or [this python-validity bug comment thread](https://github.com/uunicorn/python-validity/issues/3).
