@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import errno
 import logging
 import logging.handlers
 import os
@@ -18,16 +19,17 @@ import dbus
 import dbus.mainloop.glib
 import dbus.service
 import yaml
+from validitysensor import PYTHON_VALIDITY_DATA_DIR
 from gi.repository import GLib
 from usb import core as usb_core
 
 from validitysensor import init
 from validitysensor.db import subtype_to_string, db, SidIdentity, User
-from validitysensor.init_data_dir import PYTHON_VALIDITY_DATA_DIR, init_data_dir
 from validitysensor.sensor import sensor, RebootException
+from validitysensor.util import DatabaseFullException, DeviceStorageException
 from validitysensor.sid import sid_from_string
 from validitysensor.tls import tls
-from validitysensor.usb import usb
+from validitysensor.usb import usb, DeviceBusyException
 from validitysensor.fingerprint_constants import finger_ids
 
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
@@ -36,7 +38,6 @@ INTERFACE_NAME = 'io.github.uunicorn.Fprint.Device'
 
 loop = GLib.MainLoop()
 
-init_data_dir()
 
 class NoEnrolledPrints(dbus.DBusException):
     _dbus_error_name = 'net.reactivated.Fprint.Error.NoEnrolledPrints'
@@ -74,8 +75,24 @@ class Device(dbus.service.Object):
         tls.reset()
         try:
             init.open_common()
-        except:
-            init.open_common()
+        except DeviceBusyException as e:
+            logging.warning('Device busy during resume, will retry later: %s', str(e))
+            # Don't crash on resume if device is busy
+        except usb_core.USBError as e:
+            if e.errno == errno.EBUSY or 'busy' in str(e).lower():
+                logging.warning('USB device busy during resume: %s', str(e))
+            else:
+                # Try once more for other USB errors
+                try:
+                    init.open_common()
+                except:
+                    logging.error('Failed to resume after retry')
+        except Exception as e:
+            logging.warning('Resume failed, retrying: %s', str(e))
+            try:
+                init.open_common()
+            except:
+                logging.error('Resume retry also failed')
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature="s", out_signature="as")
     def ListEnrolledFingers(self, user):
@@ -158,6 +175,14 @@ class Device(dbus.service.Object):
             try:
                 sensor.enroll(usr, index, update_cb)
                 self.EnrollStatus('enroll-completed', True)
+            except DatabaseFullException as e:
+                logging.error(f"Database full during enrollment: {e}")
+                self.EnrollStatus('enroll-failed', True)
+                # Don't quit the loop for database full errors - user can clean up and retry
+            except DeviceStorageException as e:
+                logging.error(f"Device storage error during enrollment: {e}")
+                self.EnrollStatus('enroll-failed', True)
+                # Don't quit the loop for storage errors - might be temporary
             except usb_core.USBError as e:
                 logging.exception(e)
                 self.EnrollStatus('enroll-failed', True)
@@ -195,7 +220,6 @@ class Device(dbus.service.Object):
 
 backoff_file = PYTHON_VALIDITY_DATA_DIR + 'backoff'
 
-
 # I don't know how to tell systemd to backoff in case of multiple instance of the same template service, help!
 def backoff():
     if os.path.isfile(backoff_file):
@@ -219,7 +243,9 @@ def backoff():
 
 def main():
     parser = argparse.ArgumentParser('Open fprintd DBus service')
-    parser.add_argument('--debug', help='Enable tracing', action='store_true')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--debug', help='Enable debug output and tracing', action='store_true')
+    group.add_argument('--quiet', help='Suppress all output below INFO level', action='store_true')
     parser.add_argument('--devpath', help='USB device path: usb-<busnum>-<address>')
     parser.add_argument('--configpath',
                         default='/etc/python-validity',
@@ -231,11 +257,15 @@ def main():
         level = logging.DEBUG
         usb.trace_enabled = True
         tls.trace_enabled = True
+    elif args.quiet:
+        level = logging.WARNING
     else:
         level = logging.INFO
 
     handler = logging.handlers.SysLogHandler(address='/dev/log')
-    logging.basicConfig(level=level, handlers=[handler])
+    formatter = logging.Formatter('%(message)s')
+    handler.setFormatter(formatter)
+    logging.basicConfig(level=level, handlers=[handler], format='%(message)s')
 
     # Load and perform basic validation of config file.
     try:
@@ -269,6 +299,18 @@ def main():
     except RebootException:
         logging.debug('Initialization ended up in rebooting the sensor. Normal exit.')
         sys.exit(0)
+    except DeviceBusyException as e:
+        logging.warning('USB device is busy, likely being used by another service: %s', str(e))
+        logging.info('This is normal when open-fprintd is also running. Exiting gracefully.')
+        sys.exit(0)
+    except usb_core.USBError as e:
+        if e.errno == errno.EBUSY or 'busy' in str(e).lower():
+            logging.warning('USB device is busy: %s', str(e))
+            logging.info('This is normal when open-fprintd is also running. Exiting gracefully.')
+            sys.exit(0)
+        else:
+            logging.error('USB error during initialization: %s', str(e))
+            raise
 
     bus = dbus.SystemBus()
 

@@ -6,7 +6,7 @@ from .blobs import db_write_enable
 from .flash import call_cleanups
 from .sid import SidIdentity, sid_from_bytes
 from .tls import tls
-from .util import assert_status
+from .util import assert_status, DatabaseFullException, DeviceStorageException
 from .fingerprint_constants import finger_names
 
 
@@ -211,12 +211,32 @@ class Db:
         return Db.Info(total, used, free, records, roots)
 
     def new_record(self, parent: int, typ: int, storage: int, data: bytes):
-        self.db_info()  # TODO check free space, compact the partition when out of storage
+        # Check available space before attempting to create record
+        db_info = self.db_info()
+        required_space = len(data) + 64  # Add some overhead for record metadata
+        
+        if db_info.free < required_space:
+            raise DatabaseFullException(
+                f'Insufficient database space. Required: {required_space} bytes, '
+                f'Available: {db_info.free} bytes. '
+                f'Please delete existing fingerprints to make space.'
+            )
+        
         assert_status(tls.cmd(db_write_enable))
         try:
             rsp = tls.cmd(pack('<BHHHH', 0x47, parent, typ, storage, len(data)) + data)
             assert_status(rsp)
             recid, = unpack('<H', rsp[2:])
+        except DatabaseFullException:
+            # Re-raise database full exceptions with additional context
+            raise DatabaseFullException(
+                'Database storage full during record creation. '
+                'This can happen if the fingerprint database has reached its capacity. '
+                'Please use the database cleanup utility to remove old fingerprints.'
+            )
+        except DeviceStorageException as e:
+            # Re-raise storage exceptions with additional context
+            raise DeviceStorageException(f'Device storage error during record creation: {e}')
         finally:
             call_cleanups()
         return recid
@@ -228,11 +248,50 @@ class Db:
         rec = self.new_record(stg.dbid, 5, stg.dbid, data)
         return rec
 
-    def new_finger(self, userid: int, template: bytes):
+    def new_finger(self, userid: int, template: bytes, subtype: int = None, replace_existing: bool = True):
+        """
+        Create a new fingerprint record for a user.
+        
+        Args:
+            userid: The user's database ID
+            template: The fingerprint template data
+            subtype: The finger subtype (which finger: thumb, index, etc.)
+            replace_existing: If True, remove existing fingerprints of the same subtype
+        
+        Returns:
+            The database record ID of the new fingerprint
+        """
         stg = self.get_user_storage(name='StgWindsor')
+        
+        # If subtype is provided and replace_existing is True, remove existing fingerprints of the same type
+        if subtype is not None and replace_existing:
+            try:
+                user = self.get_user(userid)
+                existing_fingers = [f for f in user.fingers if f['subtype'] == subtype]
+                
+                if existing_fingers:
+                    print(f"Replacing {len(existing_fingers)} existing fingerprint(s) for subtype {subtype} (user {userid})")
+                    freed_space = 0
+                    for finger in existing_fingers:
+                        try:
+                            freed_space += finger.get('valueSize', 0)
+                            self.del_record(finger['dbid'])
+                            print(f"Removed existing fingerprint record {finger['dbid']} ({finger.get('valueSize', 0)} bytes)")
+                        except Exception as e:
+                            print(f"Warning: Could not remove existing fingerprint {finger['dbid']}: {e}")
+                    
+                    if freed_space > 0:
+                        print(f"Freed {freed_space} bytes of database space by removing old fingerprints")
+                else:
+                    print(f"No existing fingerprints found for subtype {subtype} (user {userid})")
+            except Exception as e:
+                # If we can't check/remove existing fingerprints, log but continue
+                print(f"Warning: Could not check for existing fingerprints: {e}")
+        
         # We ask to create an object of type 0xb,
         # but because of the magical `db_write_enable` in the new_record() it ends up being 0x6
         rec = self.new_record(userid, 0xb, stg.dbid, template)
+        print(f"Created new fingerprint record {rec} for subtype {subtype} (user {userid}, {len(template)} bytes)")
         return rec
 
     def new_data(self, parent: int, data: bytes):

@@ -1,5 +1,6 @@
 import logging
 import os.path
+import time
 import typing
 from binascii import hexlify, unhexlify
 from enum import Enum
@@ -14,14 +15,13 @@ from .blobs import reset_blob
 from .db import db, SidIdentity
 from .flash import write_enable, call_cleanups, read_flash, erase_flash, write_flash_all, read_flash_all
 from .hw_tables import dev_info_lookup
-from .init_data_dir import PYTHON_VALIDITY_DATA_DIR
 from .table_types import SensorTypeInfo, SensorCaptureProg
 from .tls import tls
 from .usb import usb, CancelledException
-from .util import assert_status, unhex
+from .util import assert_status, unhex, DatabaseFullException, DeviceStorageException
 
 # TODO: this should be specific to an individual device (system may have more than one sensor)
-calib_data_path = PYTHON_VALIDITY_DATA_DIR + 'calib-data.bin'
+calib_data_path = '/usr/share/python-validity/calib-data.bin'
 
 line_update_type1_devices = [
     0xB5, 0x885, 0xB3, 0x143B, 0x1055, 0xE1, 0x8B1, 0xEA, 0xE4, 0xED, 0x1825, 0x1FF5, 0x199
@@ -225,7 +225,7 @@ class Sensor:
     def open(self):
         self.device_info = identify_sensor()
 
-        logging.info('Opening sensor: %s' % self.device_info.name)
+        logging.info('Opening sensor: %s', self.device_info.name)
         self.type_info = SensorTypeInfo.get_by_type(self.device_info.type)
 
         if self.device_info.type == 0x199:
@@ -624,10 +624,10 @@ class Sensor:
 
         if start != b'\xff' * 0x44:
             if clean_slate[:0x44] == start:
-                logging.info('Calibration data already matches the data on the flash.')
+                logging.info('Calibration data already matches the data on the flash')
                 return
             else:
-                logging.info('Calibration flash already written. Erasing.')
+                logging.info('Calibration flash already written. Erasing')
                 erase_flash(6)
 
         write_flash_all(6, 0, clean_slate)
@@ -657,23 +657,23 @@ class Sensor:
         if os.path.isfile(calib_data_path):
             with open(calib_data_path, 'rb') as f:
                 self.calib_data = f.read()
-                logging.info('Calibration data loaded from a file.')
+                logging.info('Calibration data loaded from a file')
 
             if self.check_clean_slate():
                 return
             else:
-                logging.info('No calibration data on the flash. Calibrating...')
+                logging.info('No calibration data on the flash. Calibrating')
         else:
             self.calib_data = b''
-            logging.info('No calibration data was loaded. Calibrating...')
+            logging.info('No calibration data was loaded. Calibrating')
 
         for i in range(0, self.calibration_iterations):
-            logging.debug('Calibration iteration %d...' % i)
+            logging.debug('Calibration iteration %d', i)
             rsp = tls.cmd(self.build_cmd_02(CaptureMode.CALIBRATE))
             assert_status(rsp)
             self.process_calibration_results(self.average(usb.read_82()))
 
-        logging.debug('Requesting a blank image...')
+        logging.debug('Requesting a blank image')
 
         # Get the "clean slate" image to store on the flash for fine-grained after-capture adjustments
         rsp = tls.cmd(self.build_cmd_02(CaptureMode.CALIBRATE))
@@ -788,7 +788,7 @@ class Sensor:
             elif tag == 3:
                 tid = res[magic_len:magic_len + l]
             else:
-                logging.warning('Ignoring unknown tag %x' % tag)
+                logging.warning('Ignoring unknown tag %x', tag)
 
             res = res[magic_len + l:]
 
@@ -809,20 +809,30 @@ class Sensor:
     def enroll(self, identity: SidIdentity, subtype: int,
                update_cb: typing.Callable[[typing.Any, typing.Optional[Exception]], None]):
         def do_create_finger(final_template: bytes, tid: bytes):
-            tinfo = self.make_finger_data(subtype, final_template, tid)
+            try:
+                tinfo = self.make_finger_data(subtype, final_template, tid)
 
-            usr = db.lookup_user(identity)
-            if usr is None:
-                usr = db.new_user(identity)
-            else:
-                usr = usr.dbid
+                usr = db.lookup_user(identity)
+                if usr is None:
+                    usr = db.new_user(identity)
+                else:
+                    usr = usr.dbid
 
-            recid = db.new_finger(usr, tinfo)
-            usb.wait_int()
+                recid = db.new_finger(usr, tinfo, subtype)
+                usb.wait_int()
 
-            glow_end_scan()
+                glow_end_scan()
 
-            return recid
+                return recid
+            except DatabaseFullException as e:
+                glow_end_scan()
+                raise DatabaseFullException(
+                    f"Cannot enroll fingerprint: {e}. "
+                    f"Try running the database cleanup utility to free up space."
+                )
+            except DeviceStorageException as e:
+                glow_end_scan()
+                raise DeviceStorageException(f"Device storage error during enrollment: {e}")
 
         key = 0
         template = b''
@@ -851,7 +861,15 @@ class Sensor:
                 self.enrollment_update_end()
 
         self.enrollment_update_end()  # done twice for some reason
-        return do_create_finger(template, tid)
+        
+        try:
+            return do_create_finger(template, tid)
+        except DatabaseFullException as e:
+            # Pass the exception up to the D-Bus service with clear error message
+            raise DatabaseFullException(str(e))
+        except DeviceStorageException as e:
+            # Pass the exception up to the D-Bus service with clear error message  
+            raise DeviceStorageException(str(e))
 
     def parse_dict(self, x: bytes):
         rc = {}
@@ -862,7 +880,7 @@ class Sensor:
 
         return rc
 
-    def match_finger(self) -> typing.Tuple[int, int, bytes]:
+    def match_finger(self) -> typing.Optional[typing.Tuple[int, int, bytes]]:
         try:
             stg_id = 0  # match against any storage
             usr_id = 0  # match against any user
@@ -872,7 +890,8 @@ class Sensor:
 
             b = usb.wait_int()
             if b[0] != 3:
-                raise Exception('Finger not recognized: %s' % hexlify(b).decode())
+                logging.debug('Finger not recognized: %s', hexlify(b).decode())
+                return None
 
             # get results
             rsp = tls.app(unhexlify('6000000000'))
@@ -881,7 +900,8 @@ class Sensor:
 
             (l, ), rsp = unpack('<H', rsp[:2]), rsp[2:]
             if l != len(rsp):
-                raise Exception('Response size does not match')
+                logging.debug('Response size does not match')
+                return None
 
             rsp = self.parse_dict(rsp)
 
@@ -889,28 +909,131 @@ class Sensor:
             usrid, = unpack('<L', usrid)
             subtype, = unpack('<H', subtype)
 
+
             return usrid, subtype, hsh
+        except Exception as e:
+            logging.debug('Error in match_finger: %s', e)
+            return None
         finally:
             # cleanup, ignore any errors
-            tls.app(unhexlify('6200000000'))
+            try:
+                tls.app(unhexlify('6200000000'))
+            except:
+                pass
 
     def identify(self, update_cb: typing.Callable[[Exception], None]):
-        while True:
+        from .config import SCAN_TIMEOUT, SCAN_POLL_INTERVAL, MAX_ATTEMPTS
+        from .input_watcher import create_input_watcher
+        
+        scan_timeout = SCAN_TIMEOUT
+        poll_interval = SCAN_POLL_INTERVAL
+        max_attempts = MAX_ATTEMPTS
+        start_time = time.time()
+        last_error_time = 0
+        error_cooldown = 5.0  # Fixed cooldown for error messages
+        timeout_count = 0  # Track number of timeouts
+        
+        # Create input watcher for keyboard detection
+        input_watcher = create_input_watcher()
+        scan_active = True
+        
+        def on_input_detected():
+            """Callback when keyboard input is detected - restart the timeout."""
+            nonlocal start_time, scan_active, timeout_count
+            if not scan_active:
+                logging.info('Keyboard input detected - restarting fingerprint detection')
+                start_time = time.time()
+                scan_active = True
+                # Don't reset timeout_count - keyboard input doesn't give a new attempt
+        
+        input_watcher.set_resume_callback(on_input_detected)
+        input_watcher.start_watching()
+        
+        try:
+            while True:
+                # Check if timeout has been reached
+                elapsed_time = time.time() - start_time
+                if elapsed_time >= scan_timeout and scan_active:
+                    timeout_count += 1
+                    logging.info(f'Fingerprint detection timeout #{timeout_count} after {scan_timeout}s')
+                    
+                    # Check if we've exceeded max attempts
+                    if timeout_count >= max_attempts:
+                        logging.info(f'Maximum attempts ({max_attempts}) reached - canceling fingerprint detection')
+                        # Cancel and raise exception to fall back to password
+                        raise CancelledException()
+                    
+                    # Still have attempts left, pause and wait for keyboard input
+                    scan_active = False
+                    attempts_left = max_attempts - timeout_count
+                    update_cb(Exception(f'Fingerprint timeout (attempt {timeout_count}/{max_attempts}) - press any key to retry'))
+                    # Continue loop but don't scan
+                    sleep(1)
+                    continue
+                
+                if not scan_active:
+                    # Waiting for keyboard input to restart
+                    sleep(0.5)
+                    continue
+                
+                try:
+                    glow_start_scan()
+                    try:
+                        self.capture(CaptureMode.IDENTIFY)
+                        result = self.match_finger()
+                        if result is not None:
+                            try:
+                                return result
+                            finally:
+                                # Ensure cleanup happens even if return raises an exception
+                                glow_end_scan()
+                        
+                        # If we get here, the finger wasn't recognized
+                        # Don't send retry messages on every failed scan - only on timeout
+                        # This prevents D-Bus message spam
+                            
+                    except usb_core.USBTimeoutError as e:
+                        # Ignore timeouts, just continue scanning
+                        logging.debug('USB timeout during capture, continuing')
+                        continue
+                    except Exception as e:
+                        # Log other errors but continue scanning silently
+                        # Don't spam D-Bus with retry messages
+                        logging.debug('Error during capture: %s', e)
+                    finally:
+                        # Always clean up after capture attempt
+                        try:
+                            glow_end_scan()
+                        except Exception as e:
+                            logging.debug('Error during scan cleanup: %s', e)
+                    
+                    # Use fixed polling interval
+                    sleep(poll_interval)
+                    
+                except usb_core.USBError as e:
+                    logging.error('USB error: %s', e)
+                    raise
+                except CancelledException as e:
+                    logging.debug('Scan cancelled by user')
+                    try:
+                        glow_end_scan()
+                    except Exception as e:
+                        logging.debug(f'Error during scan cleanup: {str(e)}')
+                    raise
+                except Exception as e:
+                    logging.error('Unexpected error during identification: %s', e)
+                    update_cb(e)
+                    sleep(1)
+        except Exception as e:
+            # Final cleanup in case of any unhandled exceptions
             try:
-                glow_start_scan()
-                self.capture(CaptureMode.IDENTIFY)
-                break
-            except usb_core.USBError as e:
-                raise e
-            except CancelledException as e:
                 glow_end_scan()
-                raise e
-            except Exception as e:
-                # Capture failed, retry
-                update_cb(e)
-                sleep(1)
-
-        return self.match_finger()
+            except:
+                pass
+            raise
+        finally:
+            # Stop input watching when identification ends
+            input_watcher.stop_watching()
 
     def get_finger_blobs(self, usrid: int, subtype: int):
         usr = db.get_user(usrid)

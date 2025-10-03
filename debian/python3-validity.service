@@ -1,11 +1,23 @@
 [Unit]
 Description=python-validity driver dbus service
 After=open-fprintd.service
+# Coordinate with open-fprintd but don't conflict
+Wants=open-fprintd.service
 
 [Service]
 Type=simple
-ExecStart=/usr/lib/python-validity/dbus-service --debug
+ExecStart=/usr/lib/python-validity/dbus-service --quiet
 Restart=no
+# Prevent restart loops when device is busy (exit code 0 means graceful exit)
+RestartPreventExitStatus=0
+# Set a reasonable timeout for startup
+TimeoutStartSec=30
+# Kill the service gracefully
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=10
+# Add some delay before restart attempts to avoid rapid cycling
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target

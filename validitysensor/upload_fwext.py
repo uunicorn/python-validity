@@ -5,12 +5,11 @@ from time import ctime
 
 from .firmware_tables import FIRMWARE_NAMES
 from .flash import write_flash_all, write_fw_signature, get_fw_info
-from .init_data_dir import PYTHON_VALIDITY_DATA_DIR
 from .sensor import reboot, write_hw_reg32, read_hw_reg32, identify_sensor
 from .usb import usb, SupportedDevices
+from . import PYTHON_VALIDITY_DATA_DIR
 
 firmware_home = PYTHON_VALIDITY_DATA_DIR
-
 
 def default_fwext_name():
     dev = SupportedDevices.from_usbid(usb.usb_dev().idVendor, usb.usb_dev().idProduct)

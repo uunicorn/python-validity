@@ -2,10 +2,23 @@
 
 set -e
 
-#if [ -x "/usr/bin/deb-systemd-invoke" ] && [ "$1" = remove ]; then
-#    deb-systemd-invoke stop 'python3-validity.service' || true
-#fi
-
 #DEBHELPER#
+
+if [ "$1" = "remove" ] || [ "$1" = "deconfigure" ]; then
+    # Stop our service
+    if [ -d /run/systemd/system ] && systemctl is-active --quiet python3-validity.service; then
+        systemctl stop python3-validity.service >/dev/null 2>&1 || :
+    fi
+    
+    # Unmask fprintd.service if it was previously masked by us
+    if systemctl is-enabled fprintd.service 2>/dev/null | grep -q masked; then
+        systemctl unmask fprintd.service >/dev/null 2>&1 || :
+    fi
+    
+    # Try to start fprintd if it's not running
+    if ! systemctl is-active --quiet fprintd.service 2>/dev/null; then
+        systemctl start fprintd.service >/dev/null 2>&1 || :
+    fi
+fi
 
 exit 0

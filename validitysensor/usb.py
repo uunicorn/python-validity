@@ -1,5 +1,6 @@
 import errno
 import logging
+import time
 import typing
 from binascii import hexlify, unhexlify
 from enum import Enum
@@ -28,6 +29,10 @@ supported_devices = dict((dev.value, dev) for dev in SupportedDevices)
 
 
 class CancelledException(Exception):
+    pass
+
+
+class DeviceBusyException(Exception):
     pass
 
 
@@ -100,12 +105,45 @@ class Usb:
             out = out()
             if not out:
                 return 0
-        self.trace('>cmd> %s' % hexlify(out).decode())
-        self.dev.write(1, out)
-        resp = self.dev.read(129, 100 * 1024)
-        resp = bytes(resp)
-        self.trace('<cmd< %s' % hexlify(resp).decode())
-        return resp
+        
+        max_retries = 5
+        base_delay = 0.1  # 100ms base delay
+        
+        for attempt in range(max_retries):
+            try:
+                self.trace('>cmd> %s (attempt %d/%d)', hexlify(out).decode(), attempt + 1, max_retries)
+                self.dev.write(1, out)
+                resp = self.dev.read(129, 100 * 1024)
+                resp = bytes(resp)
+                self.trace('<cmd< %s', hexlify(resp).decode())
+                return resp
+            except USBError as e:
+                if attempt < max_retries - 1:  # Don't sleep on the last attempt
+                    if e.errno == errno.EBUSY or e.errno == errno.EAGAIN or 'busy' in str(e).lower():
+                        delay = base_delay * (2 ** attempt)  # Exponential backoff
+                        self.trace('USB device busy, retrying in %.2fs (attempt %d/%d): %s', 
+                                 delay, attempt + 1, max_retries, str(e))
+                        time.sleep(delay)
+                        continue
+                    elif e.errno == errno.ENODEV or e.errno == errno.ENOENT:
+                        self.trace('USB device not found, retrying in %.2fs (attempt %d/%d): %s', 
+                                 base_delay, attempt + 1, max_retries, str(e))
+                        time.sleep(base_delay)
+                        continue
+                
+                # Re-raise the exception if it's the last attempt or unrecoverable error
+                self.trace('USB command failed after %d attempts: %s', attempt + 1, str(e))
+                if e.errno == errno.EBUSY or 'busy' in str(e).lower():
+                    raise DeviceBusyException(f"USB device is busy after {max_retries} attempts: {str(e)}") from e
+                raise
+            except Exception as e:
+                self.trace('Unexpected error in USB command (attempt %d/%d): %s', attempt + 1, max_retries, str(e))
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(base_delay)
+        
+        # This should never be reached, but just in case
+        raise USBError('USB command failed after all retry attempts')
 
     def read_82(self):
         try:
@@ -115,7 +153,7 @@ class Usb:
             #self.trace('<130< %s' % hexlify(resp).decode())
             return resp
         except Exception as e:
-            self.trace('<130< Error: %s' % repr(e))
+            self.trace('<130< Error: %s', repr(e))
             return None
 
     # FIXME There is a chance of a race condition here
@@ -124,23 +162,35 @@ class Usb:
 
     def wait_int(self):
         self.cancel = False
+        retry_count = 0
+        max_retries = 10  # Maximum number of retries before giving up
 
-        while True:
+        while retry_count < max_retries:
             try:
-                resp = self.dev.read(131, 1024, timeout=100)
+                resp = self.dev.read(131, 1024, timeout=500)  # Increased timeout to 500ms
                 resp = bytes(resp)
-                self.trace('<int< %s' % hexlify(resp).decode())
+                self.trace('<int< %s', hexlify(resp).decode())
                 return resp
             except USBError as e:
                 if e.errno == errno.ETIMEDOUT:
                     if self.cancel:
+                        self.trace('wait_int: Operation cancelled')
                         raise CancelledException()
-                else:
-                    raise e
+                    retry_count += 1
+                    self.trace('wait_int: Timeout (%d/%d)', retry_count, max_retries)
+                    continue
+                self.trace('wait_int: USB error: %s', str(e))
+                raise
+            except Exception as e:
+                self.trace('wait_int: Unexpected error: %s', str(e))
+                raise
+        
+        self.trace('wait_int: Max retries reached')
+        raise USBError('Operation timed out after multiple retries', errno.ETIMEDOUT)
 
-    def trace(self, s: str):
+    def trace(self, msg: str, *args, **kwargs):
         if self.trace_enabled:
-            logging.debug(s)
+            logging.log(5, msg, *args, **kwargs)
 
 
 usb = Usb()

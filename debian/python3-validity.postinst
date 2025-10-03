@@ -4,9 +4,20 @@ set -e
 #DEBHELPER#
 
 if [ "$1" = "configure" ]; then
+    # Mask fprintd.service to prevent conflicts with open-fprintd
+    if systemctl -q is-enabled fprintd.service 2>/dev/null; then
+        systemctl mask fprintd.service
+    fi
+
+    # Install firmware and reload systemd/udev
     validity-sensors-firmware || true
     systemctl daemon-reload || true
     udevadm control --reload-rules || true
     udevadm trigger || true
+    
+    # Enable our service
+    if [ -d /run/systemd/system ]; then
+        systemctl enable python3-validity.service >/dev/null 2>&1 || :
+    fi
 fi
 

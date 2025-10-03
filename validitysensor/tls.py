@@ -348,7 +348,11 @@ class Tls:
             pkt, rsp = rsp[:sz], rsp[sz:]
 
             if mj != 3 or mn != 3:
-                raise Exception('Unexpected TLS version %d %d' % (mj, mn))
+                # This often happens when another process is using the device
+                # Log as warning instead of fatal error to allow retry
+                logging.warning('Unexpected TLS version %d %d - device may be busy', mj, mn)
+                from .usb import DeviceBusyException
+                raise DeviceBusyException('TLS version mismatch - device likely in use by another process')
 
             if t == 0x16:
                 self.handle_handshake(pkt)
