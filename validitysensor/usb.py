@@ -87,7 +87,7 @@ class Usb:
         # c28c745a in response is a FwextBuildtime = 0x5A748CC2
         rsp = self.cmd(unhexlify('4302'))  # get_fw_info()
 
-        assert_status(self.cmd(init_hardcoded))
+        self.cmd(init_hardcoded)
 
         (err, ), rsp = unpack('<H', rsp[:2]), rsp[2:]
         if err != 0:

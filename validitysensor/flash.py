@@ -38,6 +38,8 @@ class FlashInfo:
 
 def get_flash_info():
     rsp = tls.cmd(unhex('3e'))
+    if rsp[0] == 0x04:
+        return FlashInfo(None, 0, 0, 0, 0, [])
     assert_status(rsp)
     rsp = rsp[2:]
     hdr = rsp[:0xe]
