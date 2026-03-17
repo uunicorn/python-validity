@@ -72,10 +72,13 @@ class Device(dbus.service.Object):
     def Resume(self):
         logging.debug('In Resume')
         tls.reset()
-        try:
-            init.open_common()
-        except:
-            init.open_common()
+        for attempt in range(20):
+            try:
+                init.open()
+                return
+            except usb_core.USBError as e:
+                logging.debug('Resume attempt %d failed: %s' % (attempt + 1, repr(e)))
+                time.sleep(0.1)
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature="s", out_signature="as")
     def ListEnrolledFingers(self, user):
