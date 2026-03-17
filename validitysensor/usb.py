@@ -59,7 +59,7 @@ class Usb:
 
     def open_dev(self, dev: ucore.Device):
         if dev is None:
-            raise Exception('No matching devices found')
+            raise USBError('No matching devices found')
 
         self.dev = dev
         self.dev.default_timeout = 15000
