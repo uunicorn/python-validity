@@ -1,0 +1,13 @@
+[Unit]
+Description=Restart python-validity on resume
+After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+BindsTo=python3-validity.service
+
+[Service]
+Type=oneshot
+# Force restart and wait for active state
+ExecStart=/usr/bin/systemctl restart python3-validity.service open-fprintd.service
+ExecStartPost=/usr/bin/python3 -c "import time; import dbus; bus = dbus.SystemBus();     proxy = bus.get_object(\"net.reactivated.Fprint\", \"/net/reactivated/Fprint/Manager\");     print(\"D-Bus ready\")"
+
+[Install]
+WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
