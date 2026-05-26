@@ -1,6 +1,13 @@
 # python-validity
 Validity fingerprint sensor driver.
 
+> **Note for Kensington VeriMark (`06cb:0088`) users:** that device is a
+> pre-Prometheus chip and uses a different protocol from `06cb:009a` — no
+> fwext partition, different pre-TLS pairing. A dedicated FLOSS `libfprint`
+> driver for it lives at
+> [Kensington_VeriMark_06cb-0088](https://github.com/visorcraft/Kensington_VeriMark_06cb-0088).
+> Install that instead of `python-validity` for the `06cb:0088`.
+
 Table of Contents
 =================
 
