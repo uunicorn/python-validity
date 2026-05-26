@@ -26,6 +26,19 @@ class SupportedDevices(Enum):
 
 supported_devices = dict((dev.value, dev) for dev in SupportedDevices)
 
+# Known Validity/Synaptics device IDs that this codebase does not target.
+# Detected to print a clear redirect rather than failing with a confusing
+# "no matching devices found" message.
+_externally_supported_devices = {
+    (0x06cb, 0x0088): (
+        "06cb:0088 (Kensington VeriMark) is a pre-Prometheus chip with a "
+        "different protocol from 06cb:009a (no fwext partition, different "
+        "pre-TLS pairing). A working FLOSS libfprint driver for it lives at "
+        "https://github.com/visorcraft/Kensington_VeriMark_06cb-0088 — "
+        "install that instead of python-validity for this device."
+    ),
+}
+
 
 class CancelledException(Exception):
     pass
@@ -46,6 +59,13 @@ class Usb:
                 return (d.idVendor, d.idProduct) in supported_devices
 
             dev = ucore.find(custom_match=match)
+
+            if dev is None:
+                # Check for a known-but-out-of-scope Validity/Synaptics
+                # device and print a clear redirect.
+                for (v, p), msg in _externally_supported_devices.items():
+                    if ucore.find(idVendor=v, idProduct=p) is not None:
+                        raise Exception(msg)
 
         self.open_dev(dev)
 
