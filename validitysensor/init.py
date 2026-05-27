@@ -46,6 +46,19 @@ def open_common():
 
 
 def open():
+    # Reset the USB device first to clear any stale state from previous sessions
+    import usb.core as ucore
+    import time
+    dev = ucore.find(custom_match=lambda d: (d.idVendor, d.idProduct) in
+                     {(0x138a, 0x0090), (0x138a, 0x0097), (0x138a, 0x009d),
+                      (0x138a, 0x0092), (0x06cb, 0x009a)})
+    if dev is not None:
+        try:
+            dev.reset()
+            del dev
+            time.sleep(1)
+        except Exception:
+            pass
     usb.open()
     open_common()
 
