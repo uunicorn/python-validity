@@ -22,12 +22,18 @@ FIRMWARE_URIS = {
         'driver': 'https://download.lenovo.com/pccbbs/mobiles/nz3gf07w.exe',
         'referral': 'https://download.lenovo.com/pccbbs/mobiles/nz3gf07w.exe',
         'sha512': 'a4a4e6058b1ea8ab721953d2cfd775a1e7bc589863d160e5ebbb90344858f147d695103677a8df0b2de0c95345df108bda97196245b067f45630038fb7c807cd'
-    }
+    },
+    SupportedDevices.DEV_92: {
+        'driver': 'https://download.lenovo.com/pccbbs/mobiles/nz3gf07w.exe',
+        'referral': 'https://download.lenovo.com/pccbbs/mobiles/nz3gf07w.exe',
+        'sha512': 'a4a4e6058b1ea8ab721953d2cfd775a1e7bc589863d160e5ebbb90344858f147d695103677a8df0b2de0c95345df108bda97196245b067f45630038fb7c807cd'
+    },
 }
 
 FIRMWARE_NAMES = {
     SupportedDevices.DEV_90: '6_07f_Lenovo.xpfwext',
     SupportedDevices.DEV_97: '6_07f_lenovo_mis_qm.xpfwext',
     SupportedDevices.DEV_9a: '6_07f_lenovo_mis_qm.xpfwext',
-    SupportedDevices.DEV_9d: '6_07f_lenovo_mis_qm.xpfwext'
+    SupportedDevices.DEV_9d: '6_07f_lenovo_mis_qm.xpfwext',
+    SupportedDevices.DEV_92: '6_07f_lenovo_mis_qm.xpfwext',
 }

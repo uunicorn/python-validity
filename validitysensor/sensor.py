@@ -232,6 +232,10 @@ class Sensor:
             self.key_calibration_line = 0x38  # (lines_per_calibration_data/2), but hardcoded for sensor type 0x199
             self.calibration_frames = 3  # TODO: workout where it's really comming from
             self.calibration_iterations = 3  # hardcoded for type
+        elif self.device_info.type == 0x1825:
+            self.key_calibration_line = 0x38
+            self.calibration_frames = 3
+            self.calibration_iterations = 2
         elif self.device_info.type == 0xdb:
             self.key_calibration_line = 0x48  # TODO 48 is just a guess -- find it
             self.calibration_frames = 6  # TODO: workout where it's really comming from
@@ -424,28 +428,46 @@ class Sensor:
         chunks += [[0x17, b'']]
 
         if mode == CaptureMode.IDENTIFY:
-            # This type of fragment is not present in the debugging dump routine.
-            # It seems to be only used for identification and it looks almost identical to Finger Detect (0x26)
-            # Seems to be the same all the time for a given sensor and mostly hardcoded
-            # TODO: analyse construct_wtf_4e @0000000180090BF0
-            chunks += [[
-                0x4e,
-                unhexlify(
-                    'fbb20f0000000f00300000008700020067000a00018000000a0200000b1900008813b80b01091000'
-                )
-            ]]
+            # Finger Detect
+            if self.device_info.type == 0x1825:
+                # 0x1825 uses chunk 0x26 (not 0x4e) with adjusted thresholds
+                chunks += [[
+                    0x26,
+                    unhexlify(
+                        'fbb20f0000000f00300000005400020034000a00018000000a0200000b19000050c360ea01091000'
+                    )
+                ]]
+            else:
+                # This type of fragment is not present in the debugging dump routine.
+                # It seems to be only used for identification and it looks almost identical to Finger Detect (0x26)
+                # Seems to be the same all the time for a given sensor and mostly hardcoded
+                # TODO: analyse construct_wtf_4e @0000000180090BF0
+                chunks += [[
+                    0x4e,
+                    unhexlify(
+                        'fbb20f0000000f00300000008700020067000a00018000000a0200000b1900008813b80b01091000'
+                    )
+                ]]
             # Image Reconstruction.
             # TODO: analyse add_image_reconstruction_cmd_02_buff_list_item @000000018008EA70
             chunks += [[
                 0x2e, unhexlify('0200180002000000700070004d010000a0008c003c32321e3c0a0202')
             ]]
         elif mode == CaptureMode.ENROLL:
-            chunks += [[
-                0x26,
-                unhexlify(
-                    'fbb20f0000000f00300000008700020067000a00018000000a0200000b19000050c360ea01091000'
-                )
-            ]]
+            if self.device_info.type == 0x1825:
+                chunks += [[
+                    0x26,
+                    unhexlify(
+                        'fbb20f0000000f00300000005400020034000a00018000000a0200000b19000050c360ea01091000'
+                    )
+                ]]
+            else:
+                chunks += [[
+                    0x26,
+                    unhexlify(
+                        'fbb20f0000000f00300000008700020067000a00018000000a0200000b19000050c360ea01091000'
+                    )
+                ]]
             # Image Reconstruction. There is only one byte difference with the "identify" version. (same is true for 0097)
             chunks += [[
                 0x2e, unhexlify('0200180023000000700070004d010000a0008c003c32321e3c0a0202')
