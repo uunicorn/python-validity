@@ -10,7 +10,7 @@ from time import sleep
 from usb import core as usb_core
 
 from . import timeslot as prg
-from .blobs import reset_blob
+from .blobs import reset_blob, moh_enroll
 from .db import db, SidIdentity
 from .flash import write_enable, call_cleanups, read_flash, erase_flash, write_flash_all, read_flash_all
 from .hw_tables import dev_info_lookup
@@ -29,13 +29,14 @@ line_update_type1_devices = [
 
 
 # TODO use more sophisticated glow patters in different cases
+# led green on
 def glow_start_scan():
     cmd = unhexlify(
         '3920bf0200ffff0000019900200000000099990000000000000000000000000020000000000000000000000000ffff000000990020000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
     )
     assert_status(tls.app(cmd))
 
-
+# led_green_blink
 def glow_end_scan():
     cmd = unhexlify(
         '39f4010000f401000001ff002000000000ffff0000000000000000000000000020000000000000000000000000f401000000ff0020000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
@@ -692,7 +693,7 @@ class Sensor:
     def cancel(self):
         usb.cancel = True
 
-    def capture(self, mode: CaptureMode) -> typing.Tuple[int, int, int, int]:
+    def capture(self, mode: CaptureMode) -> typing.Tuple[int, int, int, int, bytes]:
         try:
             assert_status(tls.app(self.build_cmd_02(mode)))
 
@@ -718,6 +719,7 @@ class Sensor:
 
             res = get_prg_status2()
 
+            # 0000 (status) 00200000 (sz) 7000 (x) 7000 (y) 4d01 (?) 0800 (?) 00000000 (err_code) xxxx (img_from_sensor)
             assert_status(res)
             res = res[2:]
 
@@ -727,15 +729,45 @@ class Sensor:
             if l != len(res):
                 raise Exception('Response size does not match %d != %d', l, len(res))
 
-            x, y, w1, w2, error = unpack('<HHHHL', res)
-
+            x, y, w1, w2, error = unpack('<HHHHL', res[:12])
             if error != 0:
                 raise Exception('Scanning problem: %04x' % error)
 
-            return x, y, w1, w2
+            # Only image-streaming sensors append pixel data after the 12-byte
+            # header. Metadata-only sensor types (e.g. match-on-chip) return
+            # just the header (l == 12) and no image; assume an image is present
+            # only when l > 12.
+            img_data = b''
+            if l > 12:
+                img_data = res[12:]
+                # The feature frame is x*y bytes. Each get_prg_status2 returns up
+                # to 8192 bytes, so pull chunks until we have the whole frame.
+                # Cap the number of follow-up reads so a sensor that reports
+                # l > 12 but never streams x*y bytes errors out instead of
+                # looping forever (8 reads ≈ 64 KB, well over any frame here).
+                expected = x * y
+                max_reads = 8
+                while len(img_data) < expected:
+                    if max_reads <= 0:
+                        raise Exception('capture: image underrun, got %d of %d bytes'
+                                        % (len(img_data), expected))
+                    max_reads -= 1
+                    res = get_prg_status2()
+                    assert_status(res)
+                    res = res[2:]
+                    l, res = res[:4], res[4:]
+                    l, = unpack('<L', l)
+                    if l != len(res):
+                        raise Exception('Response size does not match %d != %d', l, len(res))
+                    img_data += res
+
+            return x, y, w1, w2, img_data
 
         finally:
-            tls.app(unhexlify('04'))  # capture stop if still running, cleanup
+            # MoH devices (a2) reject the 0x04 capture-stop after a streamed
+            # capture (the chip returns an error), so skip the cleanup there.
+            if not moh_enroll():
+                tls.app(unhexlify('04'))  # capture stop if still running, cleanup
 
     def enrollment_update_start(self, key: int) -> int:
         rsp = tls.app(pack('<BLL', 0x68, key, 0))
@@ -805,17 +837,35 @@ class Sensor:
 
         return tinfo
 
+    def enroll_moh(self, parent_dbid: int, subtype: int, **kwargs):
+        """Match-on-Host enrollment — delegates to moh_enrollment.enroll_moh.
+
+        Kept as a thin method so existing callers (and enroll() below) can use
+        the sensor instance directly; the implementation lives in
+        validitysensor/moh_enrollment.py to keep this class device-agnostic."""
+        from .moh_enrollment import enroll_moh
+        return enroll_moh(self, parent_dbid, subtype, **kwargs)
+
     # TODO: Better typing information needed.
     def enroll(self, identity: SidIdentity, subtype: int,
                update_cb: typing.Callable[[typing.Any, typing.Optional[Exception]], None]):
+        # Resolve the identity to a user dbid up front, creating the user if
+        # needed. Shared by both enrollment paths below.
+        usr = db.lookup_user(identity)
+        if usr is None:
+            usr = db.new_user(identity)
+        else:
+            usr = usr.dbid
+
+        # MoH and other native-pipeline devices enroll via enroll_moh
+        # (native feature pipeline + raw 0x47 store) instead of the
+        # DLL-style 0x68/0x6b enrollment session.
+        if moh_enroll():
+            return self.enroll_moh(usr, subtype,
+                                      update_cb=update_cb)
+
         def do_create_finger(final_template: bytes, tid: bytes):
             tinfo = self.make_finger_data(subtype, final_template, tid)
-
-            usr = db.lookup_user(identity)
-            if usr is None:
-                usr = db.new_user(identity)
-            else:
-                usr = usr.dbid
 
             recid = db.new_finger(usr, tinfo)
             usb.wait_int()
