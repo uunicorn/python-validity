@@ -1,0 +1,13 @@
+[Unit]
+Description=python-validity driver dbus service (local checkout)
+After=open-fprintd.service
+
+[Service]
+Type=simple
+Environment=PYTHONPATH=/home/liam/src/python-validity
+ExecStart=/usr/bin/python3 /home/liam/src/python-validity/dbus_service/dbus-service --debug --configpath /home/liam/src/python-validity/etc/python-validity
+Restart=on-success
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
