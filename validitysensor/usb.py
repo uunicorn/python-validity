@@ -1,5 +1,6 @@
 import errno
 import logging
+import time
 import typing
 from binascii import hexlify, unhexlify
 from enum import Enum
@@ -10,6 +11,8 @@ from usb.core import USBError
 
 from .blobs import init_hardcoded, init_hardcoded_clean_slate
 from .util import assert_status
+
+BUSY_STATUSES = (0x0401, 0x0104)
 
 
 class SupportedDevices(Enum):
@@ -76,16 +79,40 @@ class Usb:
     def usb_dev(self):
         return self.dev
 
+    def cmd_retry_busy(self, out: bytes):
+        rsp = None
+        for i in range(20):
+            try:
+                rsp = self.cmd(out)
+            except ucore.USBTimeoutError:
+                if i == 19:
+                    raise
+                time.sleep(0.5)
+                continue
+
+            s_stat, = unpack('<H', rsp[:2])
+            if s_stat in BUSY_STATUSES:
+                time.sleep(0.5)
+                continue
+
+            return rsp
+
+        return rsp
+
     def send_init(self):
         # self.dev.set_configuration()
 
         # TODO analyse responses, detect hardware type
-        assert_status(self.cmd(unhexlify('01')))  # RomInfo.get()
+        # The sensor may reply with a transient "busy" status to the
+        # first command(s) after it wakes up. Retry a few times to let it settle.
+        rsp_init = self.cmd_retry_busy(unhexlify('01'))  # RomInfo.get()
+        assert_status(rsp_init)
+
         assert_status(self.cmd(unhexlify('19')))
 
         # 43 -- get partition header(?) (02 -- fwext partition)
         # c28c745a in response is a FwextBuildtime = 0x5A748CC2
-        rsp = self.cmd(unhexlify('4302'))  # get_fw_info()
+        rsp = self.cmd_retry_busy(unhexlify('4302'))  # get_fw_info()
 
         assert_status(self.cmd(init_hardcoded))
 

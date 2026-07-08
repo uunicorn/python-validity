@@ -28,8 +28,8 @@ def close():
 
 def open_common():
     init_data_dir()
-    init_flash()
     usb.send_init()
+    init_flash()
     tls.parse_tls_flash(read_tls_flash())
     tls.open()
     upload_fwext()
