@@ -4,6 +4,7 @@ ENV{DEVTYPE}!="usb_device", GOTO="python_validity_end"
 ATTRS{idVendor}=="138a", ATTRS{idProduct}=="0090", GOTO="python_validity_match"
 ATTRS{idVendor}=="138a", ATTRS{idProduct}=="0097", GOTO="python_validity_match"
 ATTRS{idVendor}=="06cb", ATTRS{idProduct}=="009a", GOTO="python_validity_match"
+ATTRS{idVendor}=="047d", ATTRS{idProduct}=="8054", GOTO="python_validity_match"
 
 GOTO="python_validity_end"
 

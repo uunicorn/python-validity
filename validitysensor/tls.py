@@ -4,7 +4,7 @@ import os
 import pickle
 import typing
 from binascii import hexlify, unhexlify
-from hashlib import sha256
+from hashlib import sha256, sha384
 from struct import pack, unpack
 
 from cryptography.hazmat.backends import default_backend
@@ -12,6 +12,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from .usb import usb, Usb
 from .util import unhex
@@ -35,15 +36,16 @@ fff000000000000000000000000000000000000000000000000000000000000000000000000
 crypto_backend = default_backend()
 
 
-def prf(secret: bytes, seed: bytes, length: int):
-    n = (length + 0x20 - 1) // 0x20
+def prf(secret: bytes, seed: bytes, length: int, hashf=sha256):
+    bs = hashf().digest_size
+    n = (length + bs - 1) // bs
 
     res = b''
-    a = hmac.new(secret, seed, sha256).digest()
+    a = hmac.new(secret, seed, hashf).digest()
 
     while n > 0:
-        res += hmac.new(secret, a + seed, sha256).digest()
-        a = hmac.new(secret, a, sha256).digest()
+        res += hmac.new(secret, a + seed, hashf).digest()
+        a = hmac.new(secret, a, hashf).digest()
         n -= 1
 
     return res[:length]
@@ -153,18 +155,33 @@ class Tls:
 
     def update_neg(self, b: bytes):
         self.handshake_hash.update(b)
+        if hasattr(self,
+                   'cv_hash'):  # parallel hash for CertificateVerify (may differ from PRF hash)
+            self.cv_hash.update(b)
 
     def make_keys(self):
+        hf = getattr(self, 'prf_hash', sha256)
         skey = ec.generate_private_key(ec.SECP256R1(), crypto_backend)
         self.session_public = skey.private_numbers().public_numbers
         pre_master_secret = skey.exchange(ec.ECDH(), self.ecdh_q)
         seed = self.client_random + self.server_random
-        self.master_secret = prf(pre_master_secret, b'master secret' + seed, 0x30)
-        key_block = prf(self.master_secret, b'key expansion' + seed, 0x120)
+        self.master_secret = prf(pre_master_secret, b'master secret' + seed, 0x30, hf)
+        if getattr(self, 'gcm', False):
+            # AES-256-GCM (RFC 5288): key_block = client_key(32) server_key(32)
+            # client_salt(4) server_salt(4); no MAC keys. GCM IV = salt || explicit_nonce(8).
+            self.tx_seq = 0
+            self.rx_seq = 0
+            key_block = prf(self.master_secret, b'key expansion' + seed, 2 * 0x20 + 2 * 4, hf)
+            self.encryption_key = key_block[0:0x20]
+            self.decryption_key = key_block[0x20:0x40]
+            self.client_salt = key_block[0x40:0x44]
+            self.server_salt = key_block[0x44:0x48]
+            return
+        key_block = prf(self.master_secret, b'key expansion' + seed, 0x120, hf)
         self.sign_key = key_block[0x00:0x20]
-        self.validation_key = key_block[0x20:0x20 + 0x20]
-        self.encryption_key = key_block[0x40:0x40 + 0x20]
-        self.decryption_key = key_block[0x60:0x60 + 0x20]
+        self.validation_key = key_block[0x20:0x40]
+        self.encryption_key = key_block[0x40:0x60]
+        self.decryption_key = key_block[0x60:0x80]
 
     def save(self):
         with open('tls.dict', 'wb') as f:
@@ -197,13 +214,30 @@ class Tls:
         return m
 
     def encrypt(self, b: bytes):
-        # iv = unhexlify('454849acdd075174d6b9e713a957c2e7')
         iv = os.urandom(0x10)
         cipher = Cipher(algorithms.AES(self.encryption_key), modes.CBC(iv), backend=crypto_backend)
         encryptor = cipher.encryptor()
         b = pad(b)
         c = encryptor.update(b) + encryptor.finalize()
         return iv + c
+
+    def gcm_seal(self, t, plaintext):
+        # TLS 1.2 AES-GCM record body: explicit_nonce(8) || ciphertext || tag(16).
+        # GCM IV = client_salt(4) || explicit_nonce(8); AAD = seq(8) || type || ver || len.
+        seq = self.tx_seq
+        self.tx_seq = seq + 1
+        explicit_nonce = os.urandom(8)
+        iv = self.client_salt + explicit_nonce
+        aad = pack('>Q', seq) + pack('>BBBH', t, 3, 3, len(plaintext))
+        return explicit_nonce + AESGCM(self.encryption_key).encrypt(iv, plaintext, aad)
+
+    def gcm_open(self, t, body):
+        explicit_nonce, ct = body[:8], body[8:]
+        seq = self.rx_seq
+        self.rx_seq = seq + 1
+        iv = self.server_salt + explicit_nonce
+        aad = pack('>Q', seq) + pack('>BBBH', t, 3, 3, len(ct) - 16)
+        return AESGCM(self.decryption_key).decrypt(iv, ct, aad)
 
     def validate(self, t: int, b: bytes):
         b, hs = b[:-0x20], b[-0x20:]
@@ -226,8 +260,13 @@ class Tls:
 
     def make_finish(self):
         self.secure_tx = True
-        hs_hash = self.handshake_hash.copy().digest()
-        verify_data = prf(self.master_secret, b'client finished' + hs_hash, 0xc)
+        # Some devices hash the handshake for both Finished messages only through
+        # CertVerify (the client Finished is not folded in); snapshot it here so
+        # handle_finish can check the server's verify_data against the same hash.
+        fh = getattr(self, 'fin_hash', None) or self.handshake_hash
+        self._fin_hash = fh.copy()
+        pf = getattr(self, 'fin_prf', None) or getattr(self, 'prf_hash', sha256)
+        verify_data = prf(self.master_secret, b'client finished' + self._fin_hash.digest(), 0xc, pf)
         return b'\x14' + with_3bytes_size(verify_data)
 
     def make_change_cipher_spec(self):
@@ -247,16 +286,20 @@ class Tls:
         return b
 
     def make_client_kex(self):
-        b = b'\x04' + to_bytes(self.session_public.x)[::-1] + to_bytes(self.session_public.y)[::-1]
+        # Uncompressed point 04 || X || Y, big-endian, zero-padded to 32 bytes each.
+        b = b'\x04' + self.session_public.x.to_bytes(32, 'big') + self.session_public.y.to_bytes(
+            32, 'big')
         return self.with_neg_hdr(0x10, b)
 
     def make_cert_verify(self):
-        buf = self.handshake_hash.copy().digest()
-        b = self.priv_key.sign(buf, ec.ECDSA(Prehashed(hashes.SHA256())))
+        h = getattr(self, 'cv_hash', self.handshake_hash)
+        prehash = getattr(self, 'cv_prehash', hashes.SHA256())
+        b = self.priv_key.sign(h.copy().digest(), ec.ECDSA(Prehashed(prehash)))
         return self.with_neg_hdr(0x0f, b)
 
     def handle_server_hello(self, p: bytes):
-        if p[:2] != unhexlify('0303'):
+        # Some devices report a non-standard version (0x0383); accept 0303 or 0383.
+        if p[:2] not in (unhexlify('0303'), unhexlify('0383')):
             raise Exception('unexpected TLS version %s' % hexlify(p[:2]).decode())
 
         p = p[2:]
@@ -267,7 +310,7 @@ class Tls:
 
         (suite, ), p = unpack('>H', p[:2]), p[2:]
 
-        if suite != 0xc005:
+        if suite not in (0xc005, 0xc02e):
             raise Exception('Server accepted unsupported cipher suite %04x' % suite)
 
         if p[0] != 0:
@@ -299,8 +342,9 @@ class Tls:
                             hexlify(p).decode())
 
     def handle_finish(self, b: bytes):
-        hs_hash = self.handshake_hash.copy().digest()
-        verify_data = prf(self.master_secret, b'server finished' + hs_hash, 0xc)
+        fh = getattr(self, '_fin_hash', None) or self.handshake_hash
+        pf = getattr(self, 'fin_prf', None) or getattr(self, 'prf_hash', sha256)
+        verify_data = prf(self.master_secret, b'server finished' + fh.copy().digest(), 0xc, pf)
         if verify_data != b:
             raise Exception('Final handshake check failed')
 
@@ -308,11 +352,14 @@ class Tls:
         if not self.secure_rx:
             raise Exception('App payload before secure connection established')
 
+        if getattr(self, 'gcm', False):
+            return self.gcm_open(0x17, b)
         return self.validate(0x17, self.decrypt(b))
 
     def handle_handshake(self, handshake: bytes) -> None:
         if self.secure_rx:
-            handshake = self.validate(0x16, self.decrypt(handshake))
+            handshake = self.gcm_open(0x16, handshake) if getattr(self, 'gcm', False) \
+                else self.validate(0x16, self.decrypt(handshake))
 
         while len(handshake) > 0:
             while len(handshake) < 4:
@@ -371,13 +418,15 @@ class Tls:
         if not self.secure_tx:
             raise Exception('App payload before secure connection established')
 
-        b = self.encrypt(self.sign(0x17, b))
+        b = self.gcm_seal(0x17, b) if getattr(self, 'gcm', False) else self.encrypt(
+            self.sign(0x17, b))
 
         return unhexlify('170303') + with_2bytes_size(b)
 
     def make_handshake(self, b: bytes):
         if self.secure_tx:
-            b = self.encrypt(self.sign(0x16, b))
+            b = self.gcm_seal(0x16, b) if getattr(self, 'gcm', False) else self.encrypt(
+                self.sign(0x16, b))
 
         return unhexlify('160303') + with_2bytes_size(b)
 
@@ -390,8 +439,10 @@ class Tls:
 
         suits = b''
         suits += pack('>H', 0xc005)  # TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA
+        suits += pack('>H', 0xc02e)  # TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA384
         suits += pack('>H', 0x003d)  # TLS_RSA_WITH_AES_256_CBC_SHA256
-        suits += pack('>H', 0x008d)  # TLS_RSA_WITH_AES_256_CBC_SHA256
+        suits += pack('>H', 0x008d)  # TLS_PSK_WITH_AES_256_CBC_SHA
+        suits += pack('>H', 0x00a8)  # TLS_PSK_WITH_AES_256_CBC_SHA384
         h += with_2bytes_size(suits)
 
         h += with_1byte_size(b'')  # no compression options
