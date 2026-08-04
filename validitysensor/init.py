@@ -9,6 +9,7 @@ from validitysensor.sensor import sensor, reboot, RebootException
 from validitysensor.tls import tls
 from validitysensor.upload_fwext import upload_fwext
 from validitysensor.usb import usb
+from validitysensor import tudor
 
 
 def close():
@@ -27,6 +28,10 @@ def close():
 
 
 def open_common():
+    if tudor.present():
+        tudor.open_session()
+        return
+
     init_data_dir()
     init_flash()
     usb.send_init()
@@ -46,6 +51,10 @@ def open_common():
 
 
 def open():
+    if tudor.present():
+        tudor.open_session()
+        return
+
     usb.open()
     open_common()
 

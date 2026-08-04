@@ -4,7 +4,7 @@ After=open-fprintd.service
 
 [Service]
 Type=simple
-ExecStart=/usr/lib/python-validity/dbus-service --debug
+ExecStart=/usr/lib/python-validity/dbus-service
 Restart=no
 
 [Install]
