@@ -14,17 +14,24 @@ from .blobs import reset_blob
 from .db import db, SidIdentity
 from .flash import write_enable, call_cleanups, read_flash, erase_flash, write_flash_all, read_flash_all
 from .hw_tables import dev_info_lookup
-from .init_data_dir import PYTHON_VALIDITY_DATA_DIR
+from .init_data_dir import PYTHON_VALIDITY_STATE_DIR
 from .table_types import SensorTypeInfo, SensorCaptureProg
 from .tls import tls
 from .usb import usb, CancelledException
 from .util import assert_status, unhex
 
 # TODO: this should be specific to an individual device (system may have more than one sensor)
-calib_data_path = PYTHON_VALIDITY_DATA_DIR + 'calib-data.bin'
+calib_data_path = PYTHON_VALIDITY_STATE_DIR + 'calib-data.bin'
+
+
+class FingerNotMatchedException(Exception):
+    """A valid capture completed, but no on-chip template matched."""
+
 
 line_update_type1_devices = [
-    0xB5, 0x885, 0xB3, 0x143B, 0x1055, 0xE1, 0x8B1, 0xEA, 0xE4, 0xED, 0x1825, 0x1FF5, 0x199
+    0xB5, 0x885, 0xB3, 0x143B, 0x1055, 0xE1, 0x8B1, 0xEA, 0xE4, 0xED, 0x1825, 0x1FF5, 0x199,
+    0xD51,  # HP EliteBook 840 G5 (138a:00ab) / HP G6 series (06cb:00b7)
+    0x969,  # HP ZBook Studio x360 G5 (138a:00ab -- same PID, different silicon)
 ]
 
 
@@ -83,7 +90,26 @@ def reboot():
 
 
 def factory_reset():
-    assert_status(usb.cmd(reset_blob))
+    rsp = usb.cmd(reset_blob)
+    status, = unpack('<H', rsp[:2])
+    if status == 0x404:
+        # See the equivalent handler in init_flash.py: the reset_blob shipped
+        # by this driver (extracted from Windows drivers for 0x199-class
+        # Prometheus chips) is rejected by 0xd51 / 0x969 silicon. There is
+        # currently no known way to factory-reset those chips via python-
+        # validity — @ntoyiakhona06-creator hit exactly this while trying to
+        # unpair a Windows-Hello-provisioned HP 840 G5 (PR uunicorn/
+        # python-validity#256).
+        raise Exception(
+            'factory_reset failed: reset_blob rejected with status 0404. '
+            'This chip family (likely 0xd51 or 0x969) does not accept the '
+            'reset_blob we ship. If you were trying to recover from a '
+            '"Signature verification failed" (Windows-Hello-paired chip), '
+            'the current workaround is to re-pair from the Windows side '
+            'first (uninstall the Synaptics driver in Windows, reboot, '
+            'let Windows reinstall it — then boot Linux). See '
+            'uunicorn/python-validity#256 for the tracking issue.')
+    assert_status(rsp)
     assert_status(usb.cmd(b'\x10' + b'\0' * 0x61))
     reboot()
 
@@ -224,6 +250,36 @@ class Sensor:
 
     def open(self):
         self.device_info = identify_sensor()
+        self.real_device_type = self.device_info.type
+
+        # Sensor types 0xd51 (HP EliteBook 840 G5 138a:00ab, HP G6 series
+        # 06cb:00b7) and 0x969 (HP ZBook Studio x360 G5 138a:00ab -- same PID,
+        # different silicon) have no native SensorTypeInfo / SensorCaptureProg
+        # entry. Empirically the 0x199 profile produces images that the on-chip
+        # matcher accepts after enrollment/verify; the 0xdb profile does not.
+        # Spoofing keeps the rest of this method (calibration switch, capture
+        # program lookup) on a code path that works.
+        if self.device_info.type in (0xd51, 0x969):
+            logging.info('Sensor type 0x%x — aliasing to 0x199 profile' % self.device_info.type)
+            self.device_info.type = 0x199
+        elif self.device_info.type == 0x199 and (
+                'FM-3439' in self.device_info.name or 'FM- 154' in self.device_info.name):
+            # After suspend/resume, 0x969 chips re-enumerate reporting sensor
+            # type 0x199 directly rather than 0x969. Without intervention the
+            # alias block above is skipped, real_device_type stays at 0x199,
+            # and capture()'s `b[0]==3` interrupt fix (which keys off
+            # real_device_type) is bypassed — so verify hangs indefinitely
+            # post-resume. The device *name* is stable across boot and resume,
+            # so we key off it: FM-3439-xxx and FM- 154-xxx are the two known
+            # 0x969 model families (HP ZBook 17 G6, ZBook Studio G5, ProBook
+            # G6). Genuine 0x199 chips (FM-3367-xxx, FM-3380-xxx, FM-155-xxx)
+            # don't match either pattern.
+            #
+            # 0xd51 users: if verify hangs after resume, please report — we
+            # may need the same treatment for 'FM-154-xxx' (no space).
+            logging.info('Sensor %s reporting 0x199 on resume — treating as 0x969'
+                         % self.device_info.name.strip())
+            self.real_device_type = 0x969
 
         logging.info('Opening sensor: %s' % self.device_info.name)
         self.type_info = SensorTypeInfo.get_by_type(self.device_info.type)
@@ -254,6 +310,21 @@ class Sensor:
         self.lines_per_frame = lines_2d * self.type_info.repeat_multiplier
         self.bytes_per_line = self.type_info.bytes_per_line
 
+        # Diagnostic (task #17): log resolved capture geometry so we can
+        # tell whether the 0x199-spoofed profile matches what the 0xd51
+        # chip actually expects. lines_2d is extracted from the capture
+        # program's 0x2f chunk; if the chip is producing a different
+        # frame size, this is where the mismatch first shows up.
+        logging.info(
+            'Capture geometry: real_type=0x%x spoofed_type=0x%x '
+            'lines_2d=%d repeat_multiplier=%d lines_per_frame=%d '
+            'bytes_per_line=0x%x line_width=%d '
+            'lines_per_calibration_data=%d',
+            self.real_device_type, self.device_info.type, lines_2d,
+            self.type_info.repeat_multiplier, self.lines_per_frame,
+            self.bytes_per_line, self.type_info.line_width,
+            self.type_info.lines_per_calibration_data)
+
         factory_bits = get_factory_bits(0x0e00)
         self.factory_calibration_values = factory_bits[3][4:]
 
@@ -263,8 +334,13 @@ class Sensor:
         self.calibrate()
 
     def save(self):
-        with open(calib_data_path, 'wb') as f:
+        temporary_path = calib_data_path + '.new'
+        with open(temporary_path, 'wb') as f:
             f.write(self.calib_data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(temporary_path, 0o600)
+        os.replace(temporary_path, calib_data_path)
 
     # This is the exact logic from the DLL.
     # If it looks broken that was probably intended.
@@ -690,7 +766,10 @@ class Sensor:
         self.save()
 
     def cancel(self):
-        usb.cancel = True
+        usb.request_cancel()
+
+    def begin_operation(self):
+        usb.clear_cancel()
 
     def capture(self, mode: CaptureMode) -> typing.Tuple[int, int, int, int]:
         try:
@@ -702,14 +781,23 @@ class Sensor:
                 raise Exception('wait_start: Unexpected interrupt type %s' % hexlify(b).decode())
 
             # wait for finger
+            # Sensor type 0xd51 (138a:00ab, 06cb:00b7) does not emit the
+            # b[0]=2 "finger detected" interrupt — it jumps directly from the
+            # start ack to b[0]=3 capture events. Accept b[0]=3 as a substitute
+            # and pass the interrupt through to the wait-capture-complete loop.
+            saved_b = None
             while True:
                 b = usb.wait_int()
                 if b[0] == 2:
                     break
+                if b[0] == 3 and getattr(self, 'real_device_type', None) in (0xd51, 0x969):
+                    saved_b = b
+                    break
 
             # wait capture complete
             while True:
-                b = usb.wait_int()
+                b = saved_b if saved_b is not None else usb.wait_int()
+                saved_b = None
                 if b[0] != 3:
                     raise Exception('Unexpected interrupt type %s' % hexlify(b).decode())
 
@@ -811,11 +899,20 @@ class Sensor:
         def do_create_finger(final_template: bytes, tid: bytes):
             tinfo = self.make_finger_data(subtype, final_template, tid)
 
-            usr = db.lookup_user(identity)
-            if usr is None:
+            existing = db.lookup_user(identity)
+            if existing is None:
                 usr = db.new_user(identity)
             else:
-                usr = usr.dbid
+                # Replace any existing enrollment for this finger slot. The chip
+                # rejects creating a second record with the same subtype for the
+                # same user. Deleting here (after all captures are done) keeps
+                # the chip's enroll session uninterrupted — earlier attempts to
+                # pre-delete before EnrollStart left the chip in a state where
+                # subsequent captures kept returning retry-scan indefinitely.
+                for f in existing.fingers:
+                    if f['subtype'] == subtype:
+                        db.del_record(f['dbid'])
+                usr = existing.dbid
 
             recid = db.new_finger(usr, tinfo)
             usb.wait_int()
@@ -871,6 +968,23 @@ class Sensor:
             assert_status(rsp)
 
             b = usb.wait_int()
+
+            # Both 04 000100db and 05 000100db are clean on-chip no-template
+            # results on this family. Earlier hardware evidence suggested the
+            # leading byte was subtype-specific (4 on 0x969, 5 on 0xd51), but
+            # physical 138a:00ab / 0xd51 firmware also emitted 4 after reboot.
+            # Match the complete observed packet so unrelated interrupt 4/5
+            # failures are not accidentally classified as a false negative.
+            no_template_packets = {
+                b'\x04\x00\x01\x00\xdb',
+                b'\x05\x00\x01\x00\xdb',
+            }
+            if (getattr(self, 'real_device_type', None) in (0xd51, 0x969)
+                    and b in no_template_packets):
+                raise FingerNotMatchedException(
+                    'No-template interrupt for sensor 0x%x: %s'
+                    % (self.real_device_type, hexlify(b).decode()))
+
             if b[0] != 3:
                 raise Exception('Finger not recognized: %s' % hexlify(b).decode())
 
@@ -896,21 +1010,27 @@ class Sensor:
 
     def identify(self, update_cb: typing.Callable[[Exception], None]):
         while True:
+            glow_start_scan()
             try:
-                glow_start_scan()
-                self.capture(CaptureMode.IDENTIFY)
-                break
-            except usb_core.USBError as e:
-                raise e
-            except CancelledException as e:
-                glow_end_scan()
-                raise e
-            except Exception as e:
-                # Capture failed, retry
-                update_cb(e)
-                sleep(1)
+                try:
+                    self.capture(CaptureMode.IDENTIFY)
+                except usb_core.USBError as e:
+                    raise e
+                except CancelledException as e:
+                    raise e
+                except Exception as e:
+                    # Capture failed, retry
+                    update_cb(e)
+                    sleep(1)
+                    continue
 
-        return self.match_finger()
+                return self.match_finger()
+            finally:
+                # Pair every scan start with a stop, including each rejected
+                # capture before the next retry. Deferring this until the whole
+                # identify call exits stacks scan sessions during poor-contact
+                # retries and eventually wedges the chip's quality gate.
+                glow_end_scan()
 
     def get_finger_blobs(self, usrid: int, subtype: int):
         usr = db.get_user(usrid)

@@ -5,12 +5,16 @@
 %:
 	dh $@ --with python3 --buildsystem=pybuild
 
+override_dh_auto_test:
+	PYTHONPATH=$(CURDIR) python3 -m unittest discover -s tests -v
+
 override_dh_installsystemd:
-	dh_installsystemd --name=python3-validity
+	# Do not contact or calibrate biometric hardware from inside dpkg. The
+	# matched udev add event starts the enabled service on the next boot.
+	dh_installsystemd --name=python3-validity --no-start
 
 override_dh_auto_install:
 	python3 ./setup.py install --root=$(CURDIR)/debian/tmp --prefix=/usr --install-layout=deb
 
 override_dh_auto_clean:
 	python3 ./setup.py clean
-

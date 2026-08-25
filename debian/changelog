@@ -1,3 +1,294 @@
+python-validity (0.16~hp18) noble; urgency=medium
+
+  * Allow the captured d51 clean-slate sequence for the second independently
+    reproduced zero-partition identity: 06cb:00b7 / 0xd51 / FM-3439-001.
+    Keep every other 00b7 variant fail-closed; that USB ID also contains 0x969
+    devices whose reset/format sequence remains unproven.
+  * Add regression coverage preventing inferred clean-slate writes to related
+    but unvalidated sensor variants.
+  * Log successful and wrong-template match outcomes at INFO level so
+    long-duration stability tests can distinguish real matches from silent
+    client cancellation without exposing biometric or template material.
+  * Keep package installation hardware-safe: cache firmware and reload rules,
+    but do not globally retrigger udev, start the daemon inside dpkg, or modify
+    PAM automatically. Matched hardware starts through udev on the next real
+    add event (normally the next boot).
+  * Restrict the startup USB-reset recovery to 138a:00ab and 06cb:00b7, the
+    exact device families with observed first-command wedges. Legacy readers
+    and 06cb:00cb retain their established startup behavior.
+  * Replace stale d51/969 reset guidance with the validated per-device
+    provisioned/clean-slate support matrix.
+  * Deepen the 138a:00ab clean-slate guard from VID:PID-only to the complete
+    captured ROM and sensor identity. The same USB ID exists with 0x969
+    hardware, so it must never inherit the d51 write sequence by inference.
+  * Recover only the documented interrupted-fwext state: if partition 2
+    returns signature error 044f, erase that incomplete firmware partition and
+    re-upload it. Leave every other firmware probe error non-destructive.
+
+ -- Dev Tochukwu <devtochukwu@users.noreply.github.com>  Wed, 05 Aug 2026 12:00:00 +0100
+
+python-validity (0.16~hp16) noble; urgency=medium
+
+  * Reconstruct the 138a:00ab clean-slate bootstrap from the original Windows
+    USBPcap attached to PR #256. Select the captured d51-family reset payload
+    for 138a:00ab and 06cb:00b7, initialize the ROM transport before flash
+    formatting, and reproduce the observed register/identity/cleanup preflight.
+  * Guard the new provisioning path behind a zero-partition flash probe and
+    the exact d51-family USB IDs; already-provisioned devices remain read-only
+    through this branch.
+  * Verify the proprietary payload by length and SHA-256 and add regression
+    coverage for bootstrap ordering and preflight command order.
+
+ -- Dev Tochukwu <devtochukwu@users.noreply.github.com>  Wed, 05 Aug 2026 08:00:00 +0100
+
+python-validity (0.16~hp15) noble; urgency=medium
+
+  * Recognize the complete 04 000100db and 05 000100db no-template packets
+    on both 0xd51 and 0x969 firmware variants. Physical 138a:00ab / 0xd51
+    hardware emitted interrupt 4 after reboot, disproving the previous strict
+    subtype mapping while preserving exact-packet validation.
+  * Remove the 25-rejected-frame daemon watchdog. Blank frames, poor contact,
+    and a genuinely unresponsive quality gate are indistinguishable at that
+    callback, so the threshold aborted healthy verifies while users were still
+    approaching the reader. D-Bus clients now exclusively own timeout and
+    cancellation; retry prompting remains throttled to one signal.
+  * Add regression coverage for both packet variants, unrelated interrupt
+    rejection, and 100 capture retries without daemon-side cancellation.
+
+ -- Dev Tochukwu <devtochukwu@users.noreply.github.com>  Wed, 05 Aug 2026 07:00:00 +0100
+
+python-validity (0.16~hp14) noble; urgency=medium
+
+  * Retry open-fprintd device registration when fprintd appears before the
+    python-validity D-Bus service is ready. Registration now uses bounded
+    exponential backoff, ignores callbacks from stale owner generations, and
+    remains idempotent across service restarts, eliminating a boot-time race
+    that previously required a manual daemon restart.
+
+ -- Dev Tochukwu <devtochukwu@users.noreply.github.com>  Mon, 03 Aug 2026 14:00:00 +0100
+
+python-validity (0.16~hp13) noble; urgency=medium
+
+  * Pair every glow/scan start with a stop before retrying a rejected capture.
+    The previous whole-verification teardown still stacked chip-side scan
+    sessions when poor-contact frames repeated, recreating the quality-gate
+    wedge after enough retries.
+  * Add a regression test that rejects one capture, succeeds on the next, and
+    proves both attempts receive independent start/stop lifecycle pairs.
+
+ -- Dev Tochukwu <devtochukwu@users.noreply.github.com>  Mon, 03 Aug 2026 13:00:00 +0100
+
+python-validity (0.16~hp12) noble; urgency=medium
+
+  * Recognize the sensor-specific no-template interrupts (5 on 0xd51, 4 on
+    0x969) and permit up to three physical scans for occasional on-chip matcher
+    false negatives. Matches owned by another user still fail immediately.
+
+ -- Dev Tochukwu <devtochukwu@users.noreply.github.com>  Mon, 03 Aug 2026 12:45:00 +0100
+
+python-validity (0.16~hp11) noble; urgency=medium
+
+  * Always end the chip-side scan/glow session after identify, including normal
+    match and no-match returns. Previously only cancellation performed this
+    teardown, allowing repeated PAM and desktop verifies to accumulate stale
+    sensor state until a cold boot temporarily restored operation.
+  * Treat client cancellation as an expected outcome instead of logging a full
+    error traceback.
+  * Cache extracted proprietary firmware persistently under /var/lib and
+    migrate existing /var/run copies, avoiding a download on every reboot.
+  * Add complete 06cb:00cb udev activation, require the HP CAB extractor, and
+    restart the service automatically on operational failure.
+  * Disable verbose protocol tracing in the default systemd service so raw
+    fingerprint frames and TLS key material are not written to the journal.
+  * Keep matched internal readers out of USB runtime autosuspend; these chips
+    do not reliably restore their private capture state after an idle suspend.
+  * Use GLibUnix.signal_add on current PyGObject releases, with compatibility
+    fallback, and report SIGTERM correctly instead of labelling it SIGINT.
+
+ -- Dev Tochukwu <devtochukwu@users.noreply.github.com>  Mon, 03 Aug 2026 12:30:00 +0100
+
+python-validity (0.16~hp10) noble; urgency=medium
+
+  * Make USB cancellation persistent until the owning operation exits, fixing
+    a race where wait_int discarded Cancel and left orphan verify workers.
+  * Enforce exclusive sensor ownership across verify, enroll, and resume so a
+    timed-out desktop or PAM client cannot keep scanning in the background and
+    eventually wedge the capture-quality gate.
+
+ -- Dev Tochukwu <devtochukwu@users.noreply.github.com>  Mon, 03 Aug 2026 09:00:00 +0100
+
+python-validity (0.16~hp9) noble; urgency=medium
+
+  * Keep hardware-table identities immutable across sensor reopen. Profile
+    aliasing previously mutated the shared DeviceInfo entry, causing d51/969
+    capture handling to stop working after the first reopen.
+  * Persist calibration under /var/lib/python-validity instead of tmpfs-backed
+    /var/run so enrolled templates remain usable across reboot.
+  * Add hardware-validated 06cb:00cb support, including its device-specific
+    reset blob and HP firmware package.
+
+ -- Dev Tochukwu <devtochukwu@users.noreply.github.com>  Sun, 02 Aug 2026 18:00:00 +0100
+
+python-validity (0.16~hp8) noble; urgency=medium
+
+  * sensor.py: add support for sensor type 0x969 alongside 0xd51. HP
+    ZBook Studio x360 G5 uses the same 138a:00ab PID but a different
+    silicon variant reporting 0x969; HP G6 family on 06cb:00b7 also
+    covers this variant. Mirrors the existing 0xd51 handling across
+    line_update_type1_devices, the alias-to-0x199 block in
+    Sensor.open(), and the b[0]==3 interrupt fix in Sensor.capture().
+    Contributed by @ggiesen (SimpleX-T/python-validity#2), verified
+    on HP ZBook Studio x360 G5. Also independently developed by
+    @Karloss1234 on HP ZBook 17 G6.
+  * sensor.py: recover 0x969 chips reporting 0x199 post-resume. On
+    suspend/resume, 0x969 chips re-enumerate reporting sensor type
+    0x199 directly, causing Sensor.open() to skip the alias +
+    interrupt fix. Detect via the device name (FM-3439-xxx or
+    FM- 154-xxx — the two known 0x969 model families) and restore
+    real_device_type = 0x969. Diagnosed by @Karloss1234 on Kubuntu
+    26.04.
+  * init_flash.py, sensor.py: catch status 0404 from usb.cmd(reset_
+    blob) at init_flash() and factory_reset(), raise an actionable
+    error naming the chip-family limitation (0xd51 / 0x969 silicon
+    does not accept the reset_blob shipped by this driver, which
+    was extracted from Windows drivers for older 0x199-class chips).
+    No fix — until a working reset_blob for the newer chips is
+    obtained, init on factory-fresh chips and factory_reset for
+    Windows-Hello-paired chips remain unsupported on this family.
+    But the daemon no longer surfaces a bare "Failed: 0404" that
+    users can't act on. Reported by @bcoutts (fresh chip, HP ProBook
+    445R G6) and @ntoyiakhona06-creator (Windows-paired 840 G5).
+  * db.py: fix del_record missing db_write_enable. On 0x969 chips
+    the delete cmd (0x48) returns 04b6 silently without the
+    write-enable prefix, so records marked deleted never actually
+    freed flash space. Mirror new_record's shape: db_write_enable
+    + try/finally: call_cleanups(). Diagnosed by @Karloss1234 while
+    tracing 04b5 flash-full errors on enroll.
+  * db.py: proactive flash-full check in new_record. The chip does
+    not automatically compact the database partition after deletes,
+    so long-running Linux-only installs accumulate uncompacted
+    dead records until enroll fails at new_finger with an opaque
+    04b5. Use the db_info() call that was already there (with a
+    TODO to check the numbers) to actually check them; raise a
+    clear error naming the recovery path (erase_flash(4) + reboot)
+    before the on-wire failure.
+  * dbus-service: watchdog on VerifyStart. 0xd51 / 0x969 chips can
+    enter a "wedged capture-quality gate" state after long uptime +
+    heavy dev cycles where every captured frame is rejected and no
+    capture-complete interrupt is ever emitted — sensor.identify()
+    then loops in wait_int() indefinitely. Add a retry-count
+    threshold (25 consecutive retries, ~12-15s) that calls
+    sensor.cancel() and logs a specific "chip appears wedged; cold
+    power cycle required" warning to the journal. Recovery is a
+    real cold power cycle (shutdown, unplug charger, hold power
+    ~15s, boot) — the wedge sits below the daemon and no systemctl
+    restart can clear it.
+  * README: document Windows Hello template competition workarounds
+    (enroll different fingers per OS, or erase partition 4), the
+    Kubuntu / KDE lock-screen PAM stack recipe, and the known 0404
+    reset_blob issue.
+
+ -- SimpleX-T <ntmark2004@gmail.com>  Tue, 07 Jul 2026 23:27:29 +0100
+
+python-validity (0.16~hp7) noble; urgency=medium
+
+  * usb.py: defensive USB reset at the start of open_dev(). The 0xd51-
+    family chips (138a:00ab, 06cb:00b7) can be left in a "stuck"
+    protocol state across cold boot, unclean exit of the daemon, or
+    sudden suspend/resume — in that state the chip accepts the
+    bulk-OUT but never replies on bulk-IN, so the first cleartext
+    command (get_flash_info, cmd 3e) times out and the daemon enters
+    a 15-second restart loop. The reset is the in-driver equivalent
+    of the manual `udevadm trigger --attr-match=idVendor=...
+    --attr-match=idProduct=...` workaround multiple users were
+    running to recover after every reboot. Reported by Killersparrow1
+    (uunicorn/python-validity#238, Fedora 44, sensor vanishes on
+    reboot) and a separate Arch / ZBook G5 user (USBTimeoutError on
+    cmd 3e). Also observed intermittently on the maintainer's
+    machine.
+  * After reset, re-find the device by vid/pid because the USB
+    address can shift across the reset.
+
+ -- SimpleX-T <ntmark2004@gmail.com>  Sun, 25 May 2026 00:30:00 +0100
+
+python-validity (0.16~hp6) noble; urgency=medium
+
+  * Diagnostic logging (no behavior change):
+    - sensor.py: log resolved capture geometry once at chip open
+      (real_type, spoofed_type, lines_per_frame, bytes_per_line,
+      line_width, calibration data lines). Makes future "is the
+      spoofed-to-0x199 profile right for this chip?" questions
+      answerable from journal alone.
+    - dbus-service: log every internal chip retry-scan during
+      VerifyStart, independent of the D-Bus signal throttle.
+      Lets users / support tickets quantify capture quality.
+  * Both changes are INFO-level log lines only. ~1 log per chip
+    open + ~0-3 lines per verify in normal use.
+
+ -- SimpleX-T <ntmark2004@gmail.com>  Thu, 21 May 2026 23:55:00 +0100
+
+python-validity (0.16~hp5) noble; urgency=medium
+
+  * debian/source/options: tar-ignore .pybuild, build, *.egg-info,
+    __pycache__, *.pyc. Without this, dpkg-source for 3.0 (native)
+    packages bundles leftover local build artifacts (cached pybuild
+    state with absolute paths from the developer's machine) into the
+    source tarball, which caused per-series Launchpad builds after
+    the first one to fail with "Permission denied" trying to write
+    into a baked-in /home/<dev>/... path.
+
+ -- SimpleX-T <ntmark2004@gmail.com>  Thu, 21 May 2026 13:30:00 +0100
+
+python-validity (0.16~hp4) noble; urgency=medium
+
+  * VerifyStart: emit verify-retry-scan at most once per verify cycle so
+    pam_fprintd doesn't repeat "Place your finger on the reader" for every
+    one of the chip's chatty capture-quality retries. On the 0xd51 chip the
+    capture loop fires the signal 20+ times during a 10s timeout window,
+    which flooded the terminal during sudo. Enrollment is unchanged —
+    per-stage retry-scans there are useful because each stage is a discrete
+    user action.
+
+ -- SimpleX-T <ntmark2004@gmail.com>  Thu, 21 May 2026 23:30:00 +0100
+
+python-validity (0.16~hp3) noble; urgency=medium
+
+  * sensor.enroll: replace existing finger record when re-enrolling the same
+    subtype for the same user. Without this, the chip's db rejects creating
+    a duplicate, surfacing as enroll-failed at the final stage after all
+    captures pass. The delete is performed inside do_create_finger (right
+    before db.new_finger) so the chip's enroll session isn't disrupted —
+    pre-deleting before EnrollStart caused subsequent captures to return
+    retry-scan indefinitely until the daemon was restarted.
+
+ -- SimpleX-T <ntmark2004@gmail.com>  Thu, 21 May 2026 23:00:00 +0100
+
+python-validity (0.16~hp2) noble; urgency=medium
+
+  * validity-sensors-firmware: fall back to cabextract when innoextract
+    cannot handle the archive. HP softpaqs (e.g. sp135736.exe used for
+    138a:00ab and 06cb:00b7) are CAB-wrapped self-extracting exes, not
+    Inno Setup installers, so innoextract rejected them and the postinst
+    surfaced a noisy Python traceback. With the fallback, HP softpaq
+    extraction now works, and either extractor satisfies the runtime
+    requirement.
+  * Recommends: cabextract (so the fallback path is available by default).
+
+ -- SimpleX-T <ntmark2004@gmail.com>  Thu, 21 May 2026 11:00:00 +0100
+
+python-validity (0.16~hp1) noble; urgency=medium
+
+  * Add support for sensor type 0xd51 (138a:00ab, 06cb:00b7) — HP EliteBook
+    840 G5 and related models. Fixes a chip-specific interrupt protocol
+    that caused fprintd-verify to hang forever on these devices.
+  * Add FIRMWARE_URIS entries for DEV_AB and DEV_B7 so that
+    validity-sensors-firmware no longer crashes with KeyError on these PIDs.
+  * Enable libpam-fprintd via pam-auth-update in postinst so that sudo /
+    screen-unlock prompt for fingerprint immediately after install.
+  * Recommend libpam-fprintd.
+
+ -- SimpleX-T <ntmark2004@gmail.com>  Wed, 20 May 2026 22:25:34 +0100
+
 python-validity (0.15~ppa2) noble; urgency=medium
 
   * Change all write paths to /var/run/python-validity

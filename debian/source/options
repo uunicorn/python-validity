@@ -1,0 +1,5 @@
+tar-ignore = ".pybuild"
+tar-ignore = "build"
+tar-ignore = "*.egg-info"
+tar-ignore = "__pycache__"
+tar-ignore = "*.pyc"

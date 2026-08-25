@@ -1,9 +1,11 @@
 import errno
 import logging
+import time
 import typing
 from binascii import hexlify, unhexlify
 from enum import Enum
 from struct import unpack
+from threading import Event
 
 import usb.core as ucore
 from usb.core import USBError
@@ -18,6 +20,9 @@ class SupportedDevices(Enum):
     DEV_97 = (0x138a, 0x0097)
     DEV_9d = (0x138a, 0x009d)
     DEV_9a = (0x06cb, 0x009a)
+    DEV_AB = (0x138a, 0x00ab)  # HP EliteBook 840 G5 — sensor type 0xd51
+    DEV_B7 = (0x06cb, 0x00b7)  # HP G6 series — sensor type 0xd51
+    DEV_CB = (0x06cb, 0x00cb)  # HP Pavilion x360 14-dh -- sensor type 0x969
 
     @classmethod
     def from_usbid(cls, vendorid, productid):
@@ -25,6 +30,14 @@ class SupportedDevices(Enum):
 
 
 supported_devices = dict((dev.value, dev) for dev in SupportedDevices)
+
+
+def requires_startup_usb_reset(dev):
+    """Limit the recovery reset to hardware that has demonstrated the wedge."""
+    return (dev.idVendor, dev.idProduct) in {
+        SupportedDevices.DEV_AB.value,
+        SupportedDevices.DEV_B7.value,
+    }
 
 
 class CancelledException(Exception):
@@ -35,7 +48,7 @@ class Usb:
     def __init__(self):
         self.trace_enabled = False
         self.dev: typing.Optional[ucore.Device] = None
-        self.cancel = False
+        self.cancel_event = Event()
 
     def open(self, vendor=None, product=None):
         if vendor is not None and product is not None:
@@ -60,6 +73,36 @@ class Usb:
     def open_dev(self, dev: ucore.Device):
         if dev is None:
             raise Exception('No matching devices found')
+
+        # Defensive USB reset on init.
+        #
+        # The 0xd51-family chips (HP 138a:00ab / 06cb:00b7) can be left in
+        # a "stuck" protocol state across a previous unclean exit of this
+        # daemon, a cold boot, or a sudden suspend/resume. In that state
+        # the chip accepts the bulk-OUT but never replies on bulk-IN, so
+        # the very first cleartext command (typically `cmd 3e`
+        # get_flash_info) times out — the daemon then restart-loops at
+        # 15s intervals and the sensor is "vanished" until a manual USB
+        # reset. This block is the in-driver equivalent of the manual
+        # `udevadm trigger --attr-match=idVendor=... --attr-match=idProduct=...`
+        # workaround users have been running to recover.
+        #
+        # Reported by Killersparrow1 (#238, Fedora 44, vanishes on reboot)
+        # and Maarten (Arch, ZBook G5, USBTimeoutError on first 3e). Also
+        # observed locally on the maintainer's machine (sensor prompts but
+        # doesn't detect after a while).
+        if requires_startup_usb_reset(dev):
+            try:
+                vid, pid = dev.idVendor, dev.idProduct
+                dev.reset()
+                time.sleep(0.5)
+                # USB address may shift after reset; re-find by vid/pid.
+                dev = ucore.find(idVendor=vid, idProduct=pid)
+                if dev is None:
+                    raise Exception('Device disappeared after USB reset')
+            except USBError as e:
+                logging.warning(
+                    'open_dev: USB reset failed (often non-fatal): %s', e)
 
         self.dev = dev
         self.dev.default_timeout = 15000
@@ -118,14 +161,18 @@ class Usb:
             self.trace('<130< Error: %s' % repr(e))
             return None
 
-    # FIXME There is a chance of a race condition here
-    def cancel(self):
-        self.cancel = True
+    def request_cancel(self):
+        """Cancel the current operation without losing an early request."""
+        self.cancel_event.set()
+
+    def clear_cancel(self):
+        """Arm the USB transport for a new, exclusively-owned operation."""
+        self.cancel_event.clear()
 
     def wait_int(self):
-        self.cancel = False
-
         while True:
+            if self.cancel_event.is_set():
+                raise CancelledException()
             try:
                 resp = self.dev.read(131, 1024, timeout=100)
                 resp = bytes(resp)
@@ -133,7 +180,7 @@ class Usb:
                 return resp
             except USBError as e:
                 if e.errno == errno.ETIMEDOUT:
-                    if self.cancel:
+                    if self.cancel_event.is_set():
                         raise CancelledException()
                 else:
                     raise e

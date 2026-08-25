@@ -12,9 +12,16 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from .blobs import reset_blob
+from .clean_slate_probe import decode_response
 from .flash import write_flash, erase_flash, call_cleanups, PartitionInfo, get_flash_info, FlashInfo
 from .hw_tables import FlashIcInfo
-from .sensor import reboot, RomInfo
+from .sensor import (
+    reboot,
+    RomInfo,
+    identify_sensor,
+    read_hw_reg32,
+    write_hw_reg32,
+)
 from .tls import tls, hs_key, crt_hardcoded
 from .usb import usb
 from .util import assert_status, unhex
@@ -54,6 +61,60 @@ ac2c08c00abf43faa5528a0a8e49b02c507b01b6f1c9abffc669d8c84d7e4a714da32aade7928eca
 ''')
 
 crypto_backend = default_backend()
+
+
+def prepare_clean_slate_reset():
+    """Put d51-family ROMs into the state expected by their reset payload.
+
+    This is the exact cleartext preflight observed immediately before packet
+    78 in the clean-slate Windows capture attached to PR #256.
+    """
+    write_hw_reg32(0x8000205c, 7)
+    if read_hw_reg32(0x80002080) not in [2, 3]:
+        raise Exception('Unexpected register value during clean-slate reset')
+    identify_sensor()
+    call_cleanups()
+
+
+def read_clean_slate_identity():
+    """Read the immutable identity fields needed before authorizing writes."""
+    rom = decode_response('rom-info', usb.cmd(b'\x01'))
+    sensor = decode_response('sensor-identity', usb.cmd(b'\x75'))
+    if rom.get('status') != 0 or sensor.get('status') != 0:
+        raise Exception('Could not read clean-slate sensor identity')
+    return rom, sensor
+
+
+_D51_BOOT_ROM = {
+    'timestamp': 1415491824,
+    'build': 164,
+    'rom_major': 6,
+    'rom_minor': 7,
+    'product': 48,
+}
+
+_VALIDATED_CLEAN_SLATE_IDENTITIES = (
+    # The original Windows USB capture, reproduced from zero partitions by
+    # pianist at PR head 62ee97f.
+    (0x138a, 0x00ab, '57K0 FM- 154-120'),
+    # Independently reproduced from factory-empty flash by gfiguero using
+    # the same HP DLL payload and current PR initialization sequence.
+    (0x06cb, 0x00b7, '57K0 FM-3439-001'),
+)
+
+
+def has_validated_clean_slate_bootstrap(dev, rom, sensor):
+    """Authorize the destructive bootstrap only for physical evidence rows."""
+    # VID:PID alone is insufficient: both USB IDs have also been observed
+    # with 0x969 silicon.  Keep each destructive sequence keyed to the ROM
+    # family, real type, and model string that completed an artifact-backed
+    # zero-partition run.
+    return (
+        all(rom.get(key) == value for key, value in _D51_BOOT_ROM.items())
+        and sensor.get('sensor_type') == 0xd51
+        and (dev.idVendor, dev.idProduct, sensor.get('sensor_name'))
+        in _VALIDATED_CLEAN_SLATE_IDENTITIES
+    )
 
 
 def with_hdr(id: int, buf: bytes):
@@ -127,7 +188,23 @@ def init_flash():
     else:
         logging.info('Flash was not initialized yet. Formatting...')
 
-    assert_status(usb.cmd(reset_blob))
+    dev = usb.usb_dev()
+    if (dev.idVendor, dev.idProduct) in ((0x138a, 0x00ab), (0x06cb, 0x00b7)):
+        rom, sensor_identity = read_clean_slate_identity()
+        if not has_validated_clean_slate_bootstrap(
+                dev, rom, sensor_identity):
+            raise Exception(
+                'Refusing to provision zero-partition d51-family sensor: '
+                'its ROM and sensor identity do not match the validated '
+                'clean-slate evidence. Please attach the read-only probe '
+                'output to uunicorn/python-validity#256.'
+            )
+        if (dev.idVendor, dev.idProduct) == (0x138a, 0x00ab):
+            prepare_clean_slate_reset()
+
+    rsp = usb.cmd(reset_blob)
+    status, = unpack('<H', rsp[:2])
+    assert_status(rsp)
 
     skey = ec.generate_private_key(ec.SECP256R1(), crypto_backend)
     snums = skey.private_numbers()

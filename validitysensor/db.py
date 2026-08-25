@@ -196,7 +196,16 @@ class Db:
         return rec
 
     def del_record(self, dbid: int):
-        assert_status(tls.cmd(pack('<BH', 0x48, dbid)))
+        # Delete needs db_write_enable + a commit-cleanup pass, exactly like
+        # new_record. Without the enable prefix, 0x969 chips reject the delete
+        # with error 04b6 and the record silently stays on flash — Karloss1234
+        # traced this while diagnosing 04b5 flash-full errors on a ZBook G6.
+        # (Reported in PR uunicorn/python-validity#256.)
+        assert_status(tls.cmd(db_write_enable))
+        try:
+            assert_status(tls.cmd(pack('<BH', 0x48, dbid)))
+        finally:
+            call_cleanups()
 
     def db_info(self):
         rsp = tls.cmd(b'\x45')
@@ -211,7 +220,25 @@ class Db:
         return Db.Info(total, used, free, records, roots)
 
     def new_record(self, parent: int, typ: int, storage: int, data: bytes):
-        self.db_info()  # TODO check free space, compact the partition when out of storage
+        info = self.db_info()
+        # The chip returns opaque error 04b5 from cmd 0x47 when the database
+        # partition can't fit another record. That includes the case where
+        # deleted-but-uncompacted records occupy physical flash — the chip
+        # does not auto-compact after deletions (Windows only triggers
+        # compaction during its own enroll flow after a TPM reset).
+        # Raise a clear, actionable error before the on-wire failure so
+        # downstream code / logs point users at a real recovery path.
+        # 64 bytes covers the record header + slack (finger templates run
+        # ~23 KB, user records ~few hundred bytes — the pad matters most
+        # for the small ones near the boundary).
+        if info.free < len(data) + 64:
+            raise Exception(
+                'Database partition full: free=%d bytes, need ~%d. '
+                'The on-chip database has accumulated too many records '
+                '(or too many deleted-but-uncompacted ones). Recovery: '
+                'stop the service and run erase_flash(4), then reboot. '
+                'See PR uunicorn/python-validity#256 (Karloss1234 Point 6).'
+                % (info.free, len(data) + 64))
         assert_status(tls.cmd(db_write_enable))
         try:
             rsp = tls.cmd(pack('<BHHHH', 0x47, parent, typ, storage, len(data)) + data)
