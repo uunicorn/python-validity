@@ -53,3 +53,8 @@ def open():
 def open_devpath(busnum: int, address: int):
     usb.open_devpath(busnum, address)
     open_common()
+
+
+def reopen():
+    usb.reopen()
+    open_common()
