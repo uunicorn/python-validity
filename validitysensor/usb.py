@@ -36,8 +36,26 @@ class Usb:
         self.trace_enabled = False
         self.dev: typing.Optional[ucore.Device] = None
         self.cancel = False
+        self.identity = None
+        self.reopen_strict = False
+
+    @staticmethod
+    def device_identity(dev: ucore.Device):
+        try:
+            bus = dev.bus
+        except Exception:
+            bus = None
+
+        try:
+            ports = tuple(dev.port_numbers or ())
+        except Exception:
+            ports = ()
+
+        return dev.idVendor, dev.idProduct, bus, ports
 
     def open(self, vendor=None, product=None):
+        self.reopen_strict = False
+
         if vendor is not None and product is not None:
             dev = ucore.find(idVendor=vendor, idProduct=product)
         else:
@@ -50,6 +68,8 @@ class Usb:
         self.open_dev(dev)
 
     def open_devpath(self, busnum: int, address: int):
+        self.reopen_strict = True
+
         def match(d):
             return d.bus == busnum and d.address == address
 
@@ -57,11 +77,45 @@ class Usb:
 
         self.open_dev(dev)
 
+    def reopen(self):
+        if self.identity is None:
+            if self.reopen_strict:
+                raise Exception('Cannot safely reopen explicitly selected device without USB identity')
+            self.open()
+            return
+
+        vendor, product, bus, ports = self.identity
+
+        if bus is not None and ports:
+            def match(d):
+                if d.idVendor != vendor or d.idProduct != product:
+                    return False
+                if d.bus != bus:
+                    return False
+                try:
+                    return tuple(d.port_numbers or ()) == ports
+                except Exception:
+                    return False
+
+            dev = ucore.find(custom_match=match)
+
+            if dev is None:
+                raise Exception('Previously opened fingerprint device not found at the same USB topology')
+
+            self.open_dev(dev)
+            return
+
+        if self.reopen_strict:
+            raise Exception('Cannot safely reopen explicitly selected device without USB topology')
+
+        self.open(vendor, product)
+
     def open_dev(self, dev: ucore.Device):
         if dev is None:
             raise Exception('No matching devices found')
 
         self.dev = dev
+        self.identity = self.device_identity(dev)
         self.dev.default_timeout = 15000
         dev.set_configuration()
 
