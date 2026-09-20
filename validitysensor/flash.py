@@ -1,3 +1,4 @@
+import logging
 import typing
 from struct import pack, unpack
 
@@ -21,8 +22,8 @@ class PartitionInfo:
 
 
 class FlashInfo:
-    def __init__(self, ic: FlashIcInfo, blocks: int, unknown0: int, blocksize: int, unknown1: int,
-                 partitions: typing.Sequence[PartitionInfo]):
+    def __init__(self, ic: typing.Optional[FlashIcInfo], blocks: int, unknown0: int, blocksize: int,
+                 unknown1: int, partitions: typing.Sequence[PartitionInfo]):
         self.ic = ic
         self.blocks = blocks
         self.unknown0 = unknown0
@@ -40,6 +41,13 @@ def get_flash_info():
     rsp = tls.cmd(unhex('3e'))
     assert_status(rsp)
     rsp = rsp[2:]
+    # Some sensors reply with only the status word and no header/partition data
+    # when the flash hasn't been formatted yet. Treat this as an uninitialized
+    # flash instead of crashing on unpack().
+    if len(rsp) < 0xe:
+        logging.info(
+            'Flash info response too short (%d bytes); assuming uninitialized flash' % len(rsp))
+        return FlashInfo(None, 0, 0, 0, 0, [])
     hdr = rsp[:0xe]
     rsp = rsp[0xe:]
     jid0, jid1, blocks, unknown0, blocksize, unknown1, pcnt = unpack('<HHHHHHH', hdr)
