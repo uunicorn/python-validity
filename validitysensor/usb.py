@@ -1,5 +1,6 @@
 import errno
 import logging
+import time
 import typing
 from binascii import hexlify, unhexlify
 from enum import Enum
@@ -80,12 +81,27 @@ class Usb:
         # self.dev.set_configuration()
 
         # TODO analyse responses, detect hardware type
-        assert_status(self.cmd(unhexlify('01')))  # RomInfo.get()
+        # The sensor may reply with a transient "busy" (0x0104 / 0x0401) status
+        # to the first command(s) after it wakes up. Retry a few times to let it settle.
+        for _ in range(20):
+            rsp_init = self.cmd(unhexlify('01'))  # RomInfo.get()
+            s_stat, = unpack('<H', rsp_init[:2])
+            if s_stat in (0x0104, 0x0401):
+                time.sleep(0.5)
+                continue
+            break
+        assert_status(rsp_init)
         assert_status(self.cmd(unhexlify('19')))
 
         # 43 -- get partition header(?) (02 -- fwext partition)
         # c28c745a in response is a FwextBuildtime = 0x5A748CC2
-        rsp = self.cmd(unhexlify('4302'))  # get_fw_info()
+        for _ in range(20):
+            rsp = self.cmd(unhexlify('4302'))  # get_fw_info()
+            s_stat, = unpack('<H', rsp[:2])
+            if s_stat in (0x0104, 0x0401):
+                time.sleep(0.5)
+                continue
+            break
 
         assert_status(self.cmd(init_hardcoded))
 
