@@ -102,11 +102,15 @@ class Usb:
     def usb_dev(self):
         return self.dev
 
+    def usb_id(self):
+        """(idVendor, idProduct) of the open device"""
+        if self.dev is None:
+            raise Exception('No device open')
+        return self.dev.idVendor, self.dev.idProduct
+
     @property
     def flashless(self):
-        if self.dev is None:
-            return False
-        return supported_devices.get((self.dev.idVendor, self.dev.idProduct)) in FLASHLESS_DEVICES
+        return self.dev is not None and supported_devices.get(self.usb_id()) in FLASHLESS_DEVICES
 
     def bus_reset(self):
         """USBDEVFS_RESET. Brings a wedged flashless sensor back to its plaintext state."""
