@@ -38,6 +38,10 @@ class CancelledException(Exception):
     pass
 
 
+class DeviceNotFound(Exception):
+    pass
+
+
 class Usb:
     def __init__(self):
         self.trace_enabled = False
@@ -66,7 +70,7 @@ class Usb:
 
     def open_dev(self, dev: ucore.Device):
         if dev is None:
-            raise Exception('No matching devices found')
+            raise DeviceNotFound('No matching devices found')
 
         self.dev = dev
         self.dev.default_timeout = 15000

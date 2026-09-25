@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import argparse
+import contextlib
+import functools
 import logging
 import logging.handlers
 import os
@@ -27,7 +29,7 @@ from validitysensor.init_data_dir import PYTHON_VALIDITY_DATA_DIR, init_data_dir
 from validitysensor.sensor import sensor, RebootException
 from validitysensor.sid import sid_from_string
 from validitysensor.tls import tls
-from validitysensor.usb import usb
+from validitysensor.usb import usb, supported_devices, FLASHLESS_DEVICES
 from validitysensor.fingerprint_constants import finger_ids
 
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
@@ -193,6 +195,150 @@ class Device(dbus.service.Object):
         return hexlify(tls.app(unhexlify(cmd))).decode()
 
 
+class FprintError(dbus.DBusException):
+    def __init__(self, name, message):
+        super().__init__(message, name='net.reactivated.Fprint.Error.' + name)
+
+
+@contextlib.contextmanager
+def fprint_errors():
+    """hostmatch.backend exceptions -> the fprintd D-Bus errors clients know"""
+    from validitysensor.hostmatch.backend import Busy, InvalidFinger, NoEnrolledPrints
+    from validitysensor.hostmatch.store import StoreError
+
+    try:
+        yield
+    except Busy as e:
+        raise FprintError('AlreadyInUse', str(e)) from None
+    except NoEnrolledPrints as e:
+        raise FprintError('NoEnrolledPrints', str(e)) from None
+    except InvalidFinger as e:
+        raise FprintError('InvalidFingername', str(e)) from None
+    except StoreError as e:
+        raise FprintError('Internal', str(e)) from None
+
+
+class HostDevice(dbus.service.Object):
+    """The device for a flashless sensor, whose prints are stored and matched on the host.
+
+    Each operation opens its own session with the sensor and closes it when it ends (the
+    sensor reboots at the end of every session), so nothing is opened at startup.
+
+    Beyond what Device offers: DeleteEnrolledFinger, and org.freedesktop.DBus.Properties
+    with num-enroll-stages, name, scan-type, finger-needed and finger-present, which an
+    open-fprintd that asks for them passes on to fprintd clients. No RunCmd: raw sensor
+    commands over D-Bus aren't something to expose.
+    """
+
+    def __init__(self, bus_name, usb_id):
+        from validitysensor.hostmatch.backend import Backend, DeviceSession
+        from validitysensor.hostmatch.matcher import Matcher
+        from validitysensor.hostmatch.store import TemplateStore
+
+        dbus.service.Object.__init__(self, bus_name, '/io/github/uunicorn/Fprint/Device')
+        self.backend = Backend(TemplateStore(), Matcher(), self.emit,
+                               open_session=functools.partial(DeviceSession, *usb_id))
+
+    def emit(self, signal_name, *args):
+        """Thread-safe: queue a signal onto the main loop."""
+        if signal_name == 'PropertiesChanged':
+            changed, = args
+            args = (INTERFACE_NAME, dbus.Dictionary(changed, signature='sv'),
+                    dbus.Array([], signature='s'))
+
+        def fire():
+            getattr(self, signal_name)(*args)
+            return False
+
+        GLib.idle_add(fire)
+
+    @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='s', out_signature='as')
+    def ListEnrolledFingers(self, user):
+        with fprint_errors():
+            return self.backend.list_enrolled_fingers(str(user))
+
+    @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='s', out_signature='')
+    def DeleteEnrolledFingers(self, user):
+        with fprint_errors():
+            self.backend.delete_enrolled_fingers(str(user))
+
+    @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='ss', out_signature='')
+    def DeleteEnrolledFinger(self, user, finger):
+        with fprint_errors():
+            self.backend.delete_enrolled_finger(str(user), str(finger))
+
+    @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='ss', out_signature='')
+    def EnrollStart(self, user, finger):
+        logging.debug('In EnrollStart %s for %s' % (finger, user))
+        with fprint_errors():
+            self.backend.enroll_start(str(user), str(finger))
+
+    @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='ss', out_signature='')
+    def VerifyStart(self, user, finger):
+        logging.debug('In VerifyStart for %s, %s' % (user, finger))
+        with fprint_errors():
+            self.backend.verify_start(str(user), str(finger))
+
+    @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='', out_signature='')
+    def Cancel(self):
+        self.backend.cancel()
+
+    @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='', out_signature='')
+    def Suspend(self):
+        # A session doesn't survive a suspend
+        logging.debug('In Suspend')
+        self.backend.cancel()
+
+    @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='', out_signature='')
+    def Resume(self):
+        # Nothing to reopen: every operation opens its own session
+        logging.debug('In Resume')
+
+    @dbus.service.signal(dbus_interface=INTERFACE_NAME, signature='sb')
+    def VerifyStatus(self, result, done):
+        logging.debug('VerifyStatus %s %s' % (result, done))
+
+    @dbus.service.signal(dbus_interface=INTERFACE_NAME, signature='s')
+    def VerifyFingerSelected(self, finger):
+        logging.debug('VerifyFingerSelected')
+
+    @dbus.service.signal(dbus_interface=INTERFACE_NAME, signature='sb')
+    def EnrollStatus(self, result, done):
+        logging.debug('EnrollStatus %s %s' % (result, done))
+
+    @dbus.service.method(dbus.PROPERTIES_IFACE, in_signature='ss', out_signature='v')
+    def Get(self, interface, prop):
+        props = self.GetAll(interface)
+        if prop not in props:
+            raise dbus.DBusException('No property %s' % prop,
+                                     name='org.freedesktop.DBus.Error.UnknownProperty')
+        return props[prop]
+
+    @dbus.service.method(dbus.PROPERTIES_IFACE, in_signature='s', out_signature='a{sv}')
+    def GetAll(self, interface):
+        if interface != INTERFACE_NAME:
+            raise dbus.DBusException('No interface %s' % interface,
+                                     name='org.freedesktop.DBus.Error.UnknownInterface')
+        return dbus.Dictionary(self.backend.properties, signature='sv')
+
+    @dbus.service.signal(dbus.PROPERTIES_IFACE, signature='sa{sv}as')
+    def PropertiesChanged(self, interface, changed, invalidated):
+        pass
+
+
+def find_flashless(devpath):
+    """(idVendor, idProduct) of the sensor we'd open, if it's a flashless one."""
+    if devpath is None:
+        dev = usb_core.find(custom_match=lambda d: (d.idVendor, d.idProduct) in supported_devices)
+    else:
+        busnum, address = devpath
+        dev = usb_core.find(custom_match=lambda d: d.bus == busnum and d.address == address)
+    if dev is None:
+        return None
+    usb_id = (dev.idVendor, dev.idProduct)
+    return usb_id if supported_devices.get(usb_id) in FLASHLESS_DEVICES else None
+
+
 backoff_file = PYTHON_VALIDITY_DATA_DIR + 'backoff'
 
 
@@ -257,26 +403,37 @@ def main():
 
     backoff()
 
-    try:
-        if args.devpath is None:
-            init.open()
-        else:
-            z = re.match(r'^usb-(\d+)-(\d+)$', args.devpath)
-            if not z:
-                parser.error('Option --devpath should look like this: usb-<busnum>-<address>')
+    devpath = None
+    if args.devpath is not None:
+        z = re.match(r'^usb-(\d+)-(\d+)$', args.devpath)
+        if not z:
+            parser.error('Option --devpath should look like this: usb-<busnum>-<address>')
+        devpath = tuple(map(int, z.groups()))
 
-            init.open_devpath(*map(int, z.groups()))
-    except RebootException:
-        logging.debug('Initialization ended up in rebooting the sensor. Normal exit.')
-        sys.exit(0)
+    flashless = find_flashless(devpath)
+    if flashless is None:
+        try:
+            if devpath is None:
+                init.open()
+            else:
+                init.open_devpath(*devpath)
+        except RebootException:
+            logging.debug('Initialization ended up in rebooting the sensor. Normal exit.')
+            sys.exit(0)
 
     bus = dbus.SystemBus()
 
-    svc = Device(bus, config)
+    if flashless is None:
+        svc = Device(bus, config)
+    else:
+        svc = HostDevice(bus, flashless)
 
     def watch_cb(name):
         if name == '':
             logging.debug('Manager is offline')
+            if isinstance(svc, HostDevice):
+                # Nobody is left to stop a running operation
+                svc.backend.cancel()
         else:
             logging.debug('Manager is back online, registering')
             mgr = bus.get_object(name, '/net/reactivated/Fprint/Manager')
@@ -299,6 +456,12 @@ def main():
     except Exception as e:
         logging.exception(e)
         raise e
+    finally:
+        if isinstance(svc, HostDevice):
+            # Let a running operation end its session, so the next start doesn't find the
+            # sensor mid-TLS
+            svc.backend.cancel()
+            svc.backend.join(timeout=15)
 
 
 if __name__ == '__main__':
