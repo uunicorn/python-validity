@@ -6,6 +6,9 @@ After=open-fprintd.service
 Type=simple
 ExecStart=/usr/lib/python-validity/dbus-service --debug
 Restart=no
+# Host-side state for flashless sensors (06cb:00a8): pairing, calibration, prints.
+StateDirectory=python-validity
+StateDirectoryMode=0700
 
 [Install]
 WantedBy=multi-user.target

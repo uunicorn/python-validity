@@ -1,11 +1,13 @@
 import errno
 import logging
+import time
 import typing
 from binascii import hexlify, unhexlify
 from enum import Enum
 from struct import unpack
 
 import usb.core as ucore
+import usb.util as uutil
 from usb.core import USBError
 
 from .blobs import init_hardcoded, init_hardcoded_clean_slate
@@ -18,6 +20,7 @@ class SupportedDevices(Enum):
     DEV_97 = (0x138a, 0x0097)
     DEV_9d = (0x138a, 0x009d)
     DEV_9a = (0x06cb, 0x009a)
+    DEV_a8 = (0x06cb, 0x00a8)
 
     @classmethod
     def from_usbid(cls, vendorid, productid):
@@ -26,8 +29,16 @@ class SupportedDevices(Enum):
 
 supported_devices = dict((dev.value, dev) for dev in SupportedDevices)
 
+# Sensors without an external SPI flash: nothing survives a power cycle on the device,
+# so pairing and calibration are kept on the host and templates are matched on the host.
+FLASHLESS_DEVICES = {SupportedDevices.DEV_a8}
+
 
 class CancelledException(Exception):
+    pass
+
+
+class DeviceNotFound(Exception):
     pass
 
 
@@ -59,14 +70,33 @@ class Usb:
 
     def open_dev(self, dev: ucore.Device):
         if dev is None:
-            raise Exception('No matching devices found')
+            raise DeviceNotFound('No matching devices found')
 
         self.dev = dev
         self.dev.default_timeout = 15000
-        dev.set_configuration()
+        if self.flashless:
+            # set_configuration() wedges 06cb:00a8 (reads on 0x81 time out afterwards).
+            # The configuration is already active after enumeration, so just claim it.
+            try:
+                if dev.is_kernel_driver_active(0):
+                    dev.detach_kernel_driver(0)
+            except (NotImplementedError, USBError):
+                pass
+            uutil.claim_interface(dev, 0)
+        else:
+            dev.set_configuration()
 
     def close(self):
         if self.dev is not None:
+            if self.flashless:
+                # No reset: init.close() has already ended the session with a reboot
+                # command, and the Windows driver never resets this device either.
+                try:
+                    uutil.release_interface(self.dev, 0)
+                except USBError:
+                    pass
+                self.dev = None
+                return
             try:
                 self.dev.reset()
                 self.dev = None
@@ -76,7 +106,48 @@ class Usb:
     def usb_dev(self):
         return self.dev
 
+    def usb_id(self):
+        """(idVendor, idProduct) of the open device"""
+        if self.dev is None:
+            raise Exception('No device open')
+        return self.dev.idVendor, self.dev.idProduct
+
+    @property
+    def flashless(self):
+        return self.dev is not None and supported_devices.get(self.usb_id()) in FLASHLESS_DEVICES
+
+    def bus_reset(self):
+        """USBDEVFS_RESET. Brings a wedged flashless sensor back to its plaintext state."""
+        if self.dev is not None:
+            try:
+                self.dev.reset()
+            except USBError as e:
+                logging.warning('USB reset failed: %s' % e)
+
+    def address(self):
+        return (self.dev.bus, self.dev.address) if self.dev is not None else None
+
+    def wait_for_reboot(self, old_address, timeout=5.0):
+        """Wait for the device to re-enumerate at a new address after a reboot command.
+
+        The old address can stay listed for a moment, so a device found there doesn't count."""
+        vid_pid = [d.value for d in FLASHLESS_DEVICES]
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            dev = ucore.find(custom_match=lambda d: (d.idVendor, d.idProduct) in vid_pid)
+            if dev is not None and (dev.bus, dev.address) != old_address:
+                return True
+            time.sleep(0.05)
+        return False
+
     def send_init(self):
+        if self.flashless:
+            # No fwext partition to ask about and no init_hardcoded blob for this ROM:
+            # the Windows driver sends only these two before pairing or the TLS handshake.
+            assert_status(self.cmd(unhexlify('01')))  # RomInfo.get()
+            assert_status(self.cmd(unhexlify('19')))
+            return
+
         # self.dev.set_configuration()
 
         # TODO analyse responses, detect hardware type

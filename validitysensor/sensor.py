@@ -24,7 +24,7 @@ from .util import assert_status, unhex
 calib_data_path = PYTHON_VALIDITY_DATA_DIR + 'calib-data.bin'
 
 line_update_type1_devices = [
-    0xB5, 0x885, 0xB3, 0x143B, 0x1055, 0xE1, 0x8B1, 0xEA, 0xE4, 0xED, 0x1825, 0x1FF5, 0x199
+    0xB5, 0x885, 0xB3, 0x143B, 0x1055, 0xE1, 0x8B1, 0xEA, 0xE4, 0xED, 0x1825, 0x1FF5, 0x199, 0x2449
 ]
 
 
@@ -236,6 +236,8 @@ class Sensor:
             self.key_calibration_line = 0x48  # TODO 48 is just a guess -- find it
             self.calibration_frames = 6  # TODO: workout where it's really comming from
             self.calibration_iterations = 0
+        elif self.device_info.type == 0x2449:
+            raise Exception('Sensor type 0x2449 is flashless: open it with sensor_2449.Sensor2449')
         else:
             raise Exception('Device %s is not supported (sensor type 0x%x)' %
                             (self.device_info.name, self.device_info.type))
