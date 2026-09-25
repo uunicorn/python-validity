@@ -29,9 +29,10 @@ import urllib.request
 
 from usb import core as usb_core
 
+from validitysensor import dll_tables
 from validitysensor.init_data_dir import PYTHON_VALIDITY_DATA_DIR
 from validitysensor.firmware_tables import FIRMWARE_NAMES, FIRMWARE_URIS
-from validitysensor.usb import SupportedDevices
+from validitysensor.usb import FLASHLESS_DEVICES, SupportedDevices
 
 
 
@@ -76,6 +77,7 @@ def download_and_extract_fw(dev_type, fwdir, fwuri=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--driver-uri')
+    parser.add_argument('--driver-dll', help='synaWudfBioUsb.dll to extract the 06cb:00a8 modules from')
 
     args = parser.parse_args()
 
@@ -90,6 +92,18 @@ if __name__ == "__main__":
 
     if not dev_type:
         raise Exception('No supported validity device found')
+
+    if dev_type in FLASHLESS_DEVICES:
+        # No public download of a driver package for this sensor is known yet, so the
+        # modules come from a synaWudfBioUsb.dll the user has (from the laptop's Windows
+        # driver package).
+        if not args.driver_dll:
+            parser.error('{} needs --driver-dll /path/to/synaWudfBioUsb.dll'.format(dev_type.name))
+        with open(args.driver_dll, 'rb') as f:
+            modules = dll_tables.extract(f.read())
+        dll_tables.save(modules)
+        print('Saved {} firmware modules to {}'.format(len(modules), dll_tables.MODULES_PATH))
+        sys.exit(0)
 
     try:
         subprocess.check_call(['innoextract', '--version'], stdout=subprocess.DEVNULL)
