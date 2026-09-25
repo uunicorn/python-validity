@@ -10,6 +10,7 @@ Table of Contents
             * [list devices failed ](#list-devices-failed)
             * [Errors on startup](#errors-on-startup)
             * [Fingerprint not working after waking up from suspend](#fingerprint-not-working-after-waking-up-from-suspend)
+      * [Synaptics 06cb:00a8](#synaptics-06cb00a8)
       * [Enabling fingerprint for system authentication](#enabling-fingerprint-for-system-authentication)
          * [The actual change from pam-auth-update](#the-actual-change-from-pam-auth-update)
       * [Windows interoperability](#windows-interoperability)
@@ -84,6 +85,44 @@ $ sudo systemctl enable open-fprintd-resume open-fprintd-suspend
 ```
 
 For even more error procedures, check [this Arch comment thread](https://aur.archlinux.org/packages/python-validity/#comment-755904) or [this python-validity bug comment thread](https://github.com/uunicorn/python-validity/issues/3).
+
+## Synaptics 06cb:00a8
+
+The "Synaptics WBDI Fingerprint Reader - USB 073" (06cb:00a8, sensor type 0x2449) is
+found in laptops built on the Clevo N15xCU/ZU, among them the PC Specialist N150CU,
+System76 Darter Pro, TUXEDO InfinityBook v5 and Wortmann Terra Mobile 1550. It has no
+flash of its own, so python-validity keeps its pairing, its calibration and the enrolled
+prints in `/var/lib/python-validity/`, and matches prints on the host. See
+[issue #179](https://github.com/uunicorn/python-validity/issues/179) for how it was worked out.
+
+1. Install numpy and OpenCV, which the host-side matcher needs:
+   ```
+   $ sudo apt install python3-numpy python3-opencv     # Debian, Ubuntu
+   $ sudo dnf install python3-numpy python3-opencv     # Fedora
+   ```
+2. The sensor needs three firmware modules from the Windows driver's
+   `synaWudfBioUsb.dll`, version 5.5.2707.1073. Take the DLL from your laptop's
+   Windows fingerprint driver package (on an installed Windows, search
+   `C:\Windows\System32\DriverStore\FileRepository` for it) and extract the modules:
+   ```
+   $ sudo validity-sensors-firmware --driver-dll /path/to/synaWudfBioUsb.dll
+   ```
+3. Restart the service and enroll:
+   ```
+   $ sudo systemctl restart python3-validity
+   $ fprintd-enroll
+   ```
+   The first operation pairs and calibrates the sensor, which takes a few seconds. Keep
+   the sensor clear of fingers until `fprintd-enroll` asks for one. Enrolling takes 18
+   touches.
+
+The sensor reboots at the end of every operation, so the service opens it for each
+enroll or verify rather than holding it open. Pairing uses the DMI product serial, so the
+service must run as root, as packaged.
+
+open-fprintd 0.7 and earlier show 5 enroll stages instead of 18, don't read the
+finger-present and finger-needed properties, and can't delete a single finger. Enrolling,
+verifying and deleting all of a user's fingers all work.
 
 ## Enabling fingerprint for system authentication
 

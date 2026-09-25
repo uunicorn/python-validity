@@ -26,6 +26,9 @@ BuildRequires:  bzip2
 Requires:       policycoreutils
 Requires:       innoextract
 Requires:       open-fprintd
+# 06cb:00a8 matches prints on the host
+Recommends:     python3-numpy
+Recommends:     python3-opencv
 %{?python_provide:%python_provide python3-%{pypi_name}}
 
 
