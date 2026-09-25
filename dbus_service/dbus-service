@@ -38,8 +38,6 @@ INTERFACE_NAME = 'io.github.uunicorn.Fprint.Device'
 
 loop = GLib.MainLoop()
 
-init_data_dir()
-
 class NoEnrolledPrints(dbus.DBusException):
     _dbus_error_name = 'net.reactivated.Fprint.Error.NoEnrolledPrints'
 
@@ -230,14 +228,9 @@ class HostDevice(dbus.service.Object):
     commands over D-Bus aren't something to expose.
     """
 
-    def __init__(self, bus_name, usb_id):
-        from validitysensor.hostmatch.backend import Backend, DeviceSession
-        from validitysensor.hostmatch.matcher import Matcher
-        from validitysensor.hostmatch.store import TemplateStore
-
+    def __init__(self, bus_name, make_backend):
         dbus.service.Object.__init__(self, bus_name, '/io/github/uunicorn/Fprint/Device')
-        self.backend = Backend(TemplateStore(), Matcher(), self.emit,
-                               open_session=functools.partial(DeviceSession, *usb_id))
+        self.backend = make_backend(self.emit)
 
     def emit(self, signal_name, *args):
         """Thread-safe: queue a signal onto the main loop."""
@@ -326,6 +319,15 @@ class HostDevice(dbus.service.Object):
         pass
 
 
+def host_backend(usb_id, emit):
+    from validitysensor.hostmatch.backend import Backend, DeviceSession
+    from validitysensor.hostmatch.matcher import Matcher
+    from validitysensor.hostmatch.store import TemplateStore
+
+    return Backend(TemplateStore(), Matcher(), emit,
+                   open_session=functools.partial(DeviceSession, *usb_id))
+
+
 def find_flashless(devpath):
     """(idVendor, idProduct) of the sensor we'd open, if it's a flashless one."""
     if devpath is None:
@@ -401,6 +403,7 @@ def main():
     if not all(isinstance(e, str) for e in config['user_to_sid'].values()):
         raise Exception("Values in user to SID map must be strings")
 
+    init_data_dir()
     backoff()
 
     devpath = None
@@ -426,7 +429,7 @@ def main():
     if flashless is None:
         svc = Device(bus, config)
     else:
-        svc = HostDevice(bus, flashless)
+        svc = HostDevice(bus, functools.partial(host_backend, flashless))
 
     def watch_cb(name):
         if name == '':
