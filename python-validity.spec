@@ -1,7 +1,7 @@
 %global pypi_name validity
 
 Name:           python-%{pypi_name}
-Version:        0.12
+Version:        0.15
 Release:        1%{?dist}
 Summary:        Validity fingerprint sensor driver
 
