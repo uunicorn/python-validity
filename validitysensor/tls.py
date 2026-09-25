@@ -7,6 +7,7 @@ from binascii import hexlify, unhexlify
 from hashlib import sha256
 from struct import pack, unpack
 
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -33,6 +34,17 @@ fff000000000000000000000000000000000000000000000000000000000000000000000000
 ''')
 
 crypto_backend = default_backend()
+
+# The firmware pub keys are hardcoded for each fw revision in the synaWudfBioUsb.dll
+# (a table with one "slot 1" key per ROM version). Corresponding private keys should
+# only be known to a genuine Synaptic device. (ROM, x, y), tried in order.
+firmware_pubkeys = [
+    ('6/0x07', 0xf727653b4e16ce0665a6894d7f3a30d7d0a0be310d1292a743671fdf69f6a8d3,
+               0xa85538f8b6bec50d6eef8bd5f4d07a886243c58b2393948df761a84721a6ca94),
+    # 06cb:00a8 (issue #179)
+    ('6/0x14', 0x78b0c8f3db5730ca77e6381c74970e2f1f5b6bdc4de3706e23847be2713f7ec7,
+               0x54442f91cd561acfe58ccf4ce9996241d2a4ee69437e2a5529de4dab727e5600),
+]
 
 
 def prf(secret: bytes, seed: bytes, length: int):
@@ -490,15 +502,16 @@ class Tls:
         if zeroes != b'\0' * len(zeroes):
             raise Exception('Zeroes expected')
 
-        # The following pub key is hardcoded for each fw revision in the synaWudfBioUsb.dll.
-        # Corresponding private key should only be known to a genuine Synaptic device.
-        fwpub = ec.EllipticCurvePublicNumbers(
-            0xf727653b4e16ce0665a6894d7f3a30d7d0a0be310d1292a743671fdf69f6a8d3,
-            0xa85538f8b6bec50d6eef8bd5f4d07a886243c58b2393948df761a84721a6ca94,
-            ec.SECP256R1()).public_key(crypto_backend)
+        for rom, x, y in firmware_pubkeys:
+            fwpub = ec.EllipticCurvePublicNumbers(x, y, ec.SECP256R1()).public_key(crypto_backend)
+            try:
+                fwpub.verify(signature, key, ec.ECDSA(hashes.SHA256()))
+                self.trace('ECDH params signed by the ROM %s firmware key' % rom)
+                return
+            except InvalidSignature:
+                pass
 
-        # throws InvalidSignature
-        fwpub.verify(signature, key, ec.ECDSA(hashes.SHA256()))
+        raise InvalidSignature('ECDH params are not signed by any known firmware key')
 
     def handle_priv(self, body: bytes):
         self.priv_blob = body
