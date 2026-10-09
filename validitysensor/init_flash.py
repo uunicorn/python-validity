@@ -100,6 +100,12 @@ def serialize_partition(p: PartitionInfo):
 
 
 def partition_flash(info: FlashInfo, layout: typing.List[PartitionInfo], signature, client_public):
+    if info.ic is None:
+        # Formatting requires the exact flash parameters (size, sector size,
+        # erase command). Never guess them: a wrong value can corrupt the
+        # sensor flash. Callers retry/reset instead.
+        raise Exception('Cannot format flash: the flash IC could not be identified')
+
     logging.info('Detected Flash IC: %s, %d bytes' % (info.ic.name, info.ic.size))
 
     cmd = unhex('4f 0000 0000')
@@ -128,6 +134,14 @@ def init_flash():
         logging.info('Flash was not initialized yet. Formatting...')
 
     assert_status(usb.cmd(reset_blob))
+
+    if info.ic is None:
+        # The flash header may be available only after the reset above (seen on
+        # an uninitialized 06cb:009a). Re-query before giving up so formatting
+        # can still proceed when the IC becomes readable.
+        info = get_flash_info()
+    if info.ic is None:
+        raise Exception('Flash is uninitialized but the flash IC could not be identified')
 
     skey = ec.generate_private_key(ec.SECP256R1(), crypto_backend)
     snums = skey.private_numbers()

@@ -27,7 +27,7 @@ from validitysensor.init_data_dir import PYTHON_VALIDITY_DATA_DIR, init_data_dir
 from validitysensor.sensor import sensor, RebootException
 from validitysensor.sid import sid_from_string
 from validitysensor.tls import tls
-from validitysensor.usb import usb
+from validitysensor.usb import usb, CancelledException
 from validitysensor.fingerprint_constants import finger_ids
 
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
@@ -71,11 +71,9 @@ class Device(dbus.service.Object):
     @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='', out_signature='')
     def Resume(self):
         logging.debug('In Resume')
-        tls.reset()
-        try:
-            init.open_common()
-        except:
-            init.open_common()
+        # Re-acquire the USB device and rebuild sensor state; open_common() alone
+        # reuses a stale handle after the device re-enumerates (see #249).
+        init.resume()
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature="s", out_signature="as")
     def ListEnrolledFingers(self, user):
@@ -125,8 +123,13 @@ class Device(dbus.service.Object):
                     self.VerifyStatus('verify-match', True)
                 else:
                     self.VerifyStatus('verify-no-match', True)
+            except CancelledException:
+                # Normal when the client stops/cancels a verify or the sensor
+                # timed out waiting for a finger; not worth a traceback.
+                logging.info('Verify cancelled')
+                self.VerifyStatus('verify-no-match', True)
             except usb_core.USBError as e:
-                logging.exception(e)
+                logging.warning('Verify failed: %s', e)
                 self.VerifyStatus('verify-no-match', True)
                 loop.quit()
             except Exception as e:
@@ -158,8 +161,11 @@ class Device(dbus.service.Object):
             try:
                 sensor.enroll(usr, index, update_cb)
                 self.EnrollStatus('enroll-completed', True)
+            except CancelledException:
+                logging.info('Enroll cancelled')
+                self.EnrollStatus('enroll-failed', True)
             except usb_core.USBError as e:
-                logging.exception(e)
+                logging.warning('Enroll failed: %s', e)
                 self.EnrollStatus('enroll-failed', True)
                 loop.quit()
             except Exception as e:
