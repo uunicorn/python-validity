@@ -53,6 +53,14 @@ e44f7a80d6137794d330b5d026c328a73c907f3f653d411255b7c2f8b425d870a8a53c6630ca864b
 ac2c08c00abf43faa5528a0a8e49b02c507b01b6f1c9abffc669d8c84d7e4a714da32aade7928eca9698b82bee6b72c642c9add80bbd7ccc4121b80220d52b8a
 ''')
 
+# ROMs which predate signed partition tables (CVE-2019-18618).
+# They don't check the signature, but store it as extra partition entries instead,
+# which leaves the flash with a corrupted table: erase/read of partition 1 then fails with 04af.
+roms_without_partition_signature = [
+    #  major  minor  build
+    (6, 7, 164),  # 138a:0090, ThinkPad Yoga 260
+]
+
 crypto_backend = default_backend()
 
 
@@ -121,11 +129,20 @@ def partition_flash(info: FlashInfo, layout: typing.List[PartitionInfo], signatu
 def init_flash():
     info = get_flash_info()
 
+    if len(info.partitions) > len(flash_layout_hardcoded):
+        raise Exception(
+            'Flash partition table is corrupted (%d partitions, probably a partition signature '
+            'this ROM does not understand). Factory reset the sensor and report your ROM version: %s' %
+            (len(info.partitions), repr(RomInfo.get())))
+
     if len(info.partitions) > 0:
         logging.info('Flash has %d partitions.' % len(info.partitions))
         return
     else:
         logging.info('Flash was not initialized yet. Formatting...')
+
+    rom = RomInfo.get()
+    logging.debug(repr(rom))
 
     assert_status(usb.cmd(reset_blob))
 
@@ -141,6 +158,11 @@ def init_flash():
         if usb.usb_dev().idProduct == 0x0090:
             layout = flash_layout_hardcoded_0090
             signature = partition_signature_0090
+
+    if (rom.major, rom.minor, rom.build) in roms_without_partition_signature:
+        logging.info('ROM %d.%d build %d does not support signed partition tables' %
+                     (rom.major, rom.minor, rom.build))
+        signature = b''
 
     partition_flash(info, layout, signature, client_public)
 

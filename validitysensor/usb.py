@@ -63,7 +63,17 @@ class Usb:
 
         self.dev = dev
         self.dev.default_timeout = 15000
-        dev.set_configuration()
+
+        # Re-selecting the active configuration resets the host side data toggles only.
+        # Some sensors (e.g. 138a:0090) don't reset theirs, and then randomly drop
+        # commands/responses (timeouts, 0404) until the next power cycle.
+        try:
+            active = dev.get_active_configuration().bConfigurationValue
+        except USBError:
+            active = None
+
+        if active != 1:
+            dev.set_configuration()
 
     def close(self):
         if self.dev is not None:
