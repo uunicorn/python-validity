@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from .usb import usb, Usb
-from .util import unhex
+from .util import unhex, assert_status
 
 password_hardcoded = unhexlify('717cd72d0962bc4a2846138dbb2c24192512a76407065f383846139d4bec2033')
 gwk_sign_hardcoded = unhexlify('3a4c76b76a97981d1274247e166610e77f4d9c9d07d3c728e532916bdd28b454')
@@ -136,6 +136,10 @@ class Tls:
 
         self.make_keys()
 
+        if self.usb.usb_dev().idVendor == 0x06cb and self.usb.usb_dev().idProduct == 0x008a:
+            rsp = self.usb.cmd(b'\x00' + self.master_secret)
+            assert_status(rsp)
+
         rsp = self.usb.cmd(
             unhexlify('44000000') + self.make_handshake(self.make_certs() + self.make_client_kex() +
                                                         self.make_cert_verify()) +
@@ -235,7 +239,10 @@ class Tls:
 
     def make_certs(self):
         cert = self.tls_cert
-        cert = unhexlify('ac16') + cert  # what's this?
+        if self.usb.usb_dev().idVendor == 0x06cb and self.usb.usb_dev().idProduct == 0x008a:
+            cert = b'\x00\x00' + cert
+        else:
+            cert = unhexlify('ac16') + cert  # what's this?
         cert = pack('>BH', 0, len(
             self.tls_cert)) + cert  # this seems to violate the standard (should be len(cert))
         cert = pack('>BH', 0, len(self.tls_cert)) + cert  # same
@@ -383,15 +390,18 @@ class Tls:
 
     def make_client_hello(self):
         h = unhexlify('0303')  # TLS 1.2
-        # self.client_random = unhexlify('bc349559ac16c8f8362191395b4d04a435d870315f519eed8777488bc2b9600c')
-        self.client_random = os.urandom(0x20)
+        if self.usb.usb_dev().idVendor == 0x06cb and self.usb.usb_dev().idProduct == 0x008a:
+            self.client_random = b'\x00' * 32
+        else:
+            self.client_random = os.urandom(0x20)
         h += self.client_random  # client's random
         h += with_1byte_size(unhexlify('00000000000000'))  # session ID
 
         suits = b''
         suits += pack('>H', 0xc005)  # TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA
         suits += pack('>H', 0x003d)  # TLS_RSA_WITH_AES_256_CBC_SHA256
-        suits += pack('>H', 0x008d)  # TLS_RSA_WITH_AES_256_CBC_SHA256
+        if not (self.usb.usb_dev().idVendor == 0x06cb and self.usb.usb_dev().idProduct == 0x008a):
+            suits += pack('>H', 0x008d)  # TLS_RSA_WITH_AES_256_CBC_SHA256
         h += with_2bytes_size(suits)
 
         h += with_1byte_size(b'')  # no compression options
@@ -400,7 +410,6 @@ class Tls:
         exts += self.make_ext(0x004, pack('>H', 0x0017))  # truncated_hmac = 0x17
         exts += self.make_ext(0x00b,
                               with_1byte_size(unhexlify('00')))  # EC points format = uncompressed
-        # h += with_2bytes_size(exts)
         h += pack('>H', len(exts) - 2) + exts  # -2? WHY?!...
 
         return self.with_neg_hdr(0x01, h)
@@ -490,15 +499,31 @@ class Tls:
         if zeroes != b'\0' * len(zeroes):
             raise Exception('Zeroes expected')
 
-        # The following pub key is hardcoded for each fw revision in the synaWudfBioUsb.dll.
-        # Corresponding private key should only be known to a genuine Synaptic device.
-        fwpub = ec.EllipticCurvePublicNumbers(
-            0xf727653b4e16ce0665a6894d7f3a30d7d0a0be310d1292a743671fdf69f6a8d3,
-            0xa85538f8b6bec50d6eef8bd5f4d07a886243c58b2393948df761a84721a6ca94,
-            ec.SECP256R1()).public_key(crypto_backend)
+        # List of known firmware public keys across vendor driver packages
+        fwpubs = [
+            # 008a (Dynabook / Toshiba Tecra Viper)
+            ec.EllipticCurvePublicNumbers(
+                0x33d6208ca5f5da824b46ea1ca25e67327efc0c4ce937d9d844120d6cc08bfe5d,
+                0xb955e181fc4bf6c62b91afcdf3b61ec718dce7084742c41f57c1f0777c34a0fd,
+                ec.SECP256R1()).public_key(crypto_backend),
+            # Default / Lenovo (0090, 0097, etc.)
+            ec.EllipticCurvePublicNumbers(
+                0xf727653b4e16ce0665a6894d7f3a30d7d0a0be310d1292a743671fdf69f6a8d3,
+                0xa85538f8b6bec50d6eef8bd5f4d07a886243c58b2393948df761a84721a6ca94,
+                ec.SECP256R1()).public_key(crypto_backend),
+        ]
 
-        # throws InvalidSignature
-        fwpub.verify(signature, key, ec.ECDSA(hashes.SHA256()))
+        verified = False
+        for fwpub in fwpubs:
+            try:
+                fwpub.verify(signature, key, ec.ECDSA(hashes.SHA256()))
+                verified = True
+                break
+            except Exception:
+                pass
+
+        if not verified:
+            raise Exception('ECDH server signature verification failed')
 
     def handle_priv(self, body: bytes):
         self.priv_blob = body
@@ -509,9 +534,17 @@ class Tls:
         c, hs = body[:-0x20], body[-0x20:]
         sig = hmac.new(self.psk_validation_key, c, sha256).digest()
         if hs != sig:
-            raise Exception(
-                'Signature verification failed. This device was probably paired with another computer.'
-            )
+            # Fallback: check if paired with default/empty GWK (common in sandbox or standard installs)
+            fallback_enc = password_hardcoded
+            fallback_val = prf(fallback_enc, b'GWK_SIGN' + gwk_sign_hardcoded, 0x20)
+            if hs == hmac.new(fallback_val, c, sha256).digest():
+                self.psk_encryption_key = fallback_enc
+                self.psk_validation_key = fallback_val
+                sig = hs
+            else:
+                raise Exception(
+                    'Signature verification failed. This device was probably paired with another computer.'
+                )
 
         iv, c = c[:0x10], c[0x10:]
         cipher = Cipher(algorithms.AES(self.psk_encryption_key),

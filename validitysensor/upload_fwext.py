@@ -22,6 +22,11 @@ def default_fwext_name():
 
 
 def upload_fwext(fw_path: typing.Optional[str] = None):
+    dev = SupportedDevices.from_usbid(usb.usb_dev().idVendor, usb.usb_dev().idProduct)
+    if dev == SupportedDevices.DEV_8a:
+        logging.info('Device 008a runs directly from ROM. Skipping fwext upload.')
+        return
+
     fwi = get_fw_info(2)
     if fwi is not None:
         logging.info('Detected firmware version %d.%d (%s))' %

@@ -18,6 +18,7 @@ class SupportedDevices(Enum):
     DEV_97 = (0x138a, 0x0097)
     DEV_9d = (0x138a, 0x009d)
     DEV_9a = (0x06cb, 0x009a)
+    DEV_8a = (0x06cb, 0x008a)
 
     @classmethod
     def from_usbid(cls, vendorid, productid):
@@ -81,6 +82,14 @@ class Usb:
 
         # TODO analyse responses, detect hardware type
         assert_status(self.cmd(unhexlify('01')))  # RomInfo.get()
+
+        if self.dev.idVendor == 0x06cb and self.dev.idProduct == 0x008a:
+            assert_status(self.cmd(init_hardcoded))
+            assert_status(self.cmd(unhexlify('01')))
+            assert_status(self.cmd(unhexlify('19')))
+            self.cmd(unhexlify('4302'))
+            return
+
         assert_status(self.cmd(unhexlify('19')))
 
         # 43 -- get partition header(?) (02 -- fwext partition)
@@ -102,7 +111,7 @@ class Usb:
                 return 0
         self.trace('>cmd> %s' % hexlify(out).decode())
         self.dev.write(1, out)
-        resp = self.dev.read(129, 100 * 1024)
+        resp = self.dev.read(129, 16384)
         resp = bytes(resp)
         self.trace('<cmd< %s' % hexlify(resp).decode())
         return resp

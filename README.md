@@ -1,5 +1,16 @@
-# python-validity
-Validity fingerprint sensor driver.
+# python-validity (with Synaptics Viper 06cb:008a Support)
+
+> **🎉 Update:** Added native Linux **Match-on-Host** driver support for **Synaptics WBDI `06cb:008a`** (Viper family, ASIC 57K0 FM-154-124, ROM 6.20) as found on Toshiba / Dynabook Tecra X40-D, Portégé, and related laptops!
+
+### Quick Install for 06cb:008a (Ubuntu / Debian):
+Download the prebuilt `.deb` packages from the [Latest Release](https://github.com/the-muzammilali/python-validity/releases/latest) and install:
+```bash
+sudo apt update
+sudo apt install -y python3-usb python3-cryptography python3-numpy python3-pil python3-yaml python3-dbus python3-gi fprintd libpam-fprintd
+sudo dpkg -i open-fprintd_*.deb python3-validity_*.deb
+fprintd-enroll
+fprintd-verify
+```
 
 Table of Contents
 =================

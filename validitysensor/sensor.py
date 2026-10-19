@@ -5,12 +5,13 @@ from binascii import hexlify, unhexlify
 from enum import Enum
 from hashlib import sha256
 from struct import pack, unpack
+import time
 from time import sleep
 
 from usb import core as usb_core
 
 from . import timeslot as prg
-from .blobs import reset_blob
+from .blobs import reset_blob, cmd_02_chunk_30, cmd_02_chunk_43, cmd_06
 from .db import db, SidIdentity
 from .flash import write_enable, call_cleanups, read_flash, erase_flash, write_flash_all, read_flash_all
 from .hw_tables import dev_info_lookup
@@ -24,7 +25,8 @@ from .util import assert_status, unhex
 calib_data_path = PYTHON_VALIDITY_DATA_DIR + 'calib-data.bin'
 
 line_update_type1_devices = [
-    0xB5, 0x885, 0xB3, 0x143B, 0x1055, 0xE1, 0x8B1, 0xEA, 0xE4, 0xED, 0x1825, 0x1FF5, 0x199
+    0xB5, 0x885, 0xB3, 0x143B, 0x1055, 0xE1, 0x8B1, 0xEA, 0xE4, 0xED, 0x1825, 0x1FF5, 0x199,
+    0x2449, 0x121
 ]
 
 
@@ -219,10 +221,68 @@ class CaptureMode(Enum):
     ENROLL = 3
 
 
+def get_templates_dir():
+    candidates = ['/var/lib/python-validity/templates', PYTHON_VALIDITY_DATA_DIR + 'templates', os.path.expanduser('~/.cache/python-validity/templates')]
+    for c in candidates:
+        try:
+            os.makedirs(c, exist_ok=True)
+            return c
+        except:
+            continue
+    return '/tmp/python-validity/templates'
+
+
+HANN_WINDOW_56_144 = None
+
+def get_hann_window():
+    global HANN_WINDOW_56_144
+    if HANN_WINDOW_56_144 is None:
+        import numpy as np
+        HANN_WINDOW_56_144 = (np.hanning(56)[:, None] * np.hanning(144)).astype(np.float32)
+    return HANN_WINDOW_56_144
+
+
+def host_match_score(img1_bytes: bytes, img2_bytes: bytes) -> float:
+    import numpy as np
+    from PIL import Image
+
+    a = np.frombuffer(img1_bytes, dtype=np.uint8).reshape((56, 144)).astype(np.float32)
+    b_raw = np.frombuffer(img2_bytes, dtype=np.uint8).reshape((56, 144))
+
+    hann = get_hann_window()
+    a_norm = (a - a.mean()) * hann
+    fa = np.fft.fft2(a_norm)
+    conj_fa = np.conj(fa)
+
+    b_pil = Image.fromarray(b_raw)
+    max_peak = 0.0
+
+    # Search rotation angles [-12..12] degrees to accommodate natural finger tilt
+    for angle in [0, -3, 3, -6, 6, -9, 9, -12, 12]:
+        if angle != 0:
+            b_rot = np.array(b_pil.rotate(angle, resample=Image.BILINEAR)).astype(np.float32)
+        else:
+            b_rot = b_raw.astype(np.float32)
+
+        b_norm = (b_rot - b_rot.mean()) * hann
+        fb = np.fft.fft2(b_norm)
+
+        cross_power = (fb * conj_fa) / (np.abs(fb * conj_fa) + 1e-9)
+        corr = np.fft.ifft2(cross_power)
+        peak = float(np.max(np.abs(corr)))
+        if peak > max_peak:
+            max_peak = peak
+            if max_peak >= 0.18:
+                break
+
+    return max_peak
+
+
 class Sensor:
     calib_data = b''
 
     def open(self):
+        self.capture_initialized = False
         self.device_info = identify_sensor()
 
         logging.info('Opening sensor: %s' % self.device_info.name)
@@ -235,6 +295,10 @@ class Sensor:
         elif self.device_info.type == 0xdb:
             self.key_calibration_line = 0x48  # TODO 48 is just a guess -- find it
             self.calibration_frames = 6  # TODO: workout where it's really comming from
+            self.calibration_iterations = 0
+        elif self.device_info.type in [0x121, 0x2449]:
+            self.key_calibration_line = 0x1c  # lines_per_calibration_data // 2 (56 // 2 = 28)
+            self.calibration_frames = 6
             self.calibration_iterations = 0
         else:
             raise Exception('Device %s is not supported (sensor type 0x%x)' %
@@ -411,45 +475,59 @@ class Sensor:
 
     def line_update_type_1(self, mode: CaptureMode,
                            chunks: typing.List[typing.List[typing.Union[int, bytes]]]):
-        for c in chunks:
-            # Timeslot Table 2D
-            if c[0] == 0x34:
-                # TODO: figure out when to use address increment
-                tst = self.patch_timeslot_table(c[1], True, self.type_info.repeat_multiplier)
-                if mode != CaptureMode.CALIBRATE:
-                    tst = self.patch_timeslot_again(tst)
-                c[1] = self.get_key_line() + tst[self.type_info.line_width:]
+        if self.device_info.type not in [0x121, 0x2449]:
+            for c in chunks:
+                # Timeslot Table 2D
+                if c[0] == 0x34:
+                    # TODO: figure out when to use address increment
+                    tst = self.patch_timeslot_table(c[1], True, self.type_info.repeat_multiplier)
+                    if mode != CaptureMode.CALIBRATE:
+                        tst = self.patch_timeslot_again(tst)
+                    c[1] = self.get_key_line() + tst[self.type_info.line_width:]
 
         # ---------------- Reply Configuration ---------------
         chunks += [[0x17, b'']]
 
-        if mode == CaptureMode.IDENTIFY:
-            # This type of fragment is not present in the debugging dump routine.
-            # It seems to be only used for identification and it looks almost identical to Finger Detect (0x26)
-            # Seems to be the same all the time for a given sensor and mostly hardcoded
-            # TODO: analyse construct_wtf_4e @0000000180090BF0
-            chunks += [[
-                0x4e,
-                unhexlify(
-                    'fbb20f0000000f00300000008700020067000a00018000000a0200000b1900008813b80b01091000'
-                )
-            ]]
-            # Image Reconstruction.
-            # TODO: analyse add_image_reconstruction_cmd_02_buff_list_item @000000018008EA70
-            chunks += [[
-                0x2e, unhexlify('0200180002000000700070004d010000a0008c003c32321e3c0a0202')
-            ]]
-        elif mode == CaptureMode.ENROLL:
-            chunks += [[
-                0x26,
-                unhexlify(
-                    'fbb20f0000000f00300000008700020067000a00018000000a0200000b19000050c360ea01091000'
-                )
-            ]]
-            # Image Reconstruction. There is only one byte difference with the "identify" version. (same is true for 0097)
-            chunks += [[
-                0x2e, unhexlify('0200180023000000700070004d010000a0008c003c32321e3c0a0202')
-            ]]
+        if self.device_info.type in [0x121, 0x2449]:
+            if mode in [CaptureMode.IDENTIFY, CaptureMode.ENROLL]:
+                chunks += [[
+                    0x26,
+                    unhexlify(
+                        'fbb20f0000000f00300000006001020040010a00018000000a0200000b190000102760ea01091000'
+                    )
+                ]]
+                chunks += [[
+                    0x2e, unhexlify('0200180023000000900038004d01000090017c013c323232640a0202')
+                ]]
+            elif mode == CaptureMode.CALIBRATE:
+                chunks += [[
+                    0x2e, unhexlify('0200180008000000900038004d01000058027c013c323232640a0202')
+                ]]
+            chunks += [[0x44, pack('<L', 1)]]
+            chunks += [[0x30, cmd_02_chunk_30()]]
+            chunks += [[0x43, cmd_02_chunk_43()]]
+            return chunks
+        else:
+            if mode == CaptureMode.IDENTIFY:
+                chunks += [[
+                    0x4e,
+                    unhexlify(
+                        'fbb20f0000000f00300000008700020067000a00018000000a0200000b1900008813b80b01091000'
+                    )
+                ]]
+                chunks += [[
+                    0x2e, unhexlify('0200180002000000700070004d010000a0008c003c32321e3c0a0202')
+                ]]
+            elif mode == CaptureMode.ENROLL:
+                chunks += [[
+                    0x26,
+                    unhexlify(
+                        'fbb20f0000000f00300000008700020067000a00018000000a0200000b19000050c360ea01091000'
+                    )
+                ]]
+                chunks += [[
+                    0x2e, unhexlify('0200180023000000700070004d010000a0008c003c32321e3c0a0202')
+                ]]
 
         # ---------------- Interleave ---------------
         chunks += [[0x44, pack('<L', 1)]]
@@ -604,8 +682,8 @@ class Sensor:
     def build_cmd_02(self, mode: CaptureMode):
         chunks = list(prg.split_chunks(self.hardcoded_prog))
 
-        if self.rom_info.product != 0x30:
-            raise Exception('Not implemented')
+        if self.rom_info.product not in [0x30, 0x33]:
+            raise Exception('Product %d not implemented' % self.rom_info.product)
 
         if self.device_info.type in line_update_type1_devices:
             chunks = self.line_update_type_1(mode, chunks)
@@ -654,6 +732,9 @@ class Sensor:
         return True
 
     def calibrate(self):
+        if self.device_info.type in [0x121, 0x2449]:
+            return
+
         if os.path.isfile(calib_data_path):
             with open(calib_data_path, 'rb') as f:
                 self.calib_data = f.read()
@@ -693,7 +774,12 @@ class Sensor:
         usb.cancel = True
 
     def capture(self, mode: CaptureMode) -> typing.Tuple[int, int, int, int]:
+        success = False
         try:
+            if self.device_info.type in [0x121, 0x2449] and not getattr(self, 'capture_initialized', False):
+                assert_status(tls.app(cmd_06()))
+                self.capture_initialized = True
+
             assert_status(tls.app(self.build_cmd_02(mode)))
 
             # start
@@ -707,35 +793,69 @@ class Sensor:
                 if b[0] == 2:
                     break
 
-            # wait capture complete
-            while True:
-                b = usb.wait_int()
-                if b[0] != 3:
-                    raise Exception('Unexpected interrupt type %s' % hexlify(b).decode())
+            if self.device_info.type in [0x121, 0x2449]:
+                # On Viper 008a (0x2449) / 0x121:
+                # Do NOT poll 5100000000 while capturing. Doing so crashes the sensor array.
+                # Instead, wait on interrupt pipe until scan complete (interrupt 0x03 with b[2] & 4)
+                while True:
+                    b = usb.wait_int()
+                    if b[0] == 3 and (b[2] & 4):
+                        break
 
-                if b[2] & 4:
-                    break
+                get_prg_status()
+                res = get_prg_status2()
+                assert_status(tls.app(b'\x52'))
 
-            res = get_prg_status2()
+                assert_status(res)
+                res = res[2:]
+                l, res = res[:4], res[4:]
+                l, = unpack('<L', l)
 
-            assert_status(res)
-            res = res[2:]
+                if l != len(res):
+                    raise Exception('Response size does not match %d != %d', l, len(res))
 
-            l, res = res[:4], res[4:]
-            l, = unpack('<L', l)
+                x, y, w1, w2, error = unpack('<HHHHL', res[:12])
+                if error != 0:
+                    raise Exception('Scanning problem: %04x' % error)
 
-            if l != len(res):
-                raise Exception('Response size does not match %d != %d', l, len(res))
+                self.last_image = res[12:]
+                success = True
+                return x, y, w1, w2
+            else:
+                # wait capture complete
+                while True:
+                    b = usb.wait_int()
+                    if b[0] != 3:
+                        raise Exception('Unexpected interrupt type %s' % hexlify(b).decode())
 
-            x, y, w1, w2, error = unpack('<HHHHL', res)
+                    if b[2] & 4:
+                        break
 
-            if error != 0:
-                raise Exception('Scanning problem: %04x' % error)
+                res = get_prg_status2()
 
-            return x, y, w1, w2
+                assert_status(res)
+                res = res[2:]
+
+                l, res = res[:4], res[4:]
+                l, = unpack('<L', l)
+
+                if l != len(res):
+                    raise Exception('Response size does not match %d != %d', l, len(res))
+
+                x, y, w1, w2, error = unpack('<HHHHL', res)
+
+                if error != 0:
+                    raise Exception('Scanning problem: %04x' % error)
+
+                success = True
+                return x, y, w1, w2
 
         finally:
-            tls.app(unhexlify('04'))  # capture stop if still running, cleanup
+            if not success:
+                try:
+                    tls.app(unhexlify('04'))  # capture stop if still running, cleanup
+                except:
+                    pass
 
     def enrollment_update_start(self, key: int) -> int:
         rsp = tls.app(pack('<BLL', 0x68, key, 0))
@@ -747,6 +867,8 @@ class Sensor:
         return new_key
 
     def create_enrollment(self):
+        if self.device_info.type in [0x121, 0x2449]:
+            return
         assert_status(tls.app(pack('<BL', 0x69, 1)))
 
     def enrollment_update_end(self):
@@ -806,8 +928,159 @@ class Sensor:
         return tinfo
 
     # TODO: Better typing information needed.
+    def match_host_finger(self, verify_img: bytes) -> typing.Tuple[int, int, bytes]:
+        import hashlib, glob, time
+        import numpy as np
+        from PIL import Image
+
+        t0 = time.time()
+        tdir = get_templates_dir()
+        best_match = None
+        best_score = 0.0
+
+        # Precompute verify image FFT once
+        a = np.frombuffer(verify_img, dtype=np.uint8).reshape((56, 144)).astype(np.float32)
+        hann = get_hann_window()
+        a_norm = (a - a.mean()) * hann
+        conj_fa = np.conj(np.fft.fft2(a_norm))
+
+        loaded_templates = []
+        for tpl_path in glob.glob(os.path.join(tdir, "*.dat")):
+            fname = os.path.basename(tpl_path)[:-4]
+            parts = fname.rsplit('_', 1)
+            if len(parts) != 2:
+                continue
+            u_ident, sub_str = parts
+            try:
+                subtype = int(sub_str)
+            except ValueError:
+                subtype = 2
+
+            try:
+                if '-' in u_ident:
+                    uid_int = int(u_ident.split('-')[-1])
+                else:
+                    uid_int = int(u_ident)
+            except ValueError:
+                uid_int = 1000
+
+            try:
+                with open(tpl_path, 'rb') as fp:
+                    raw = fp.read()
+                raw_samples = [raw[i:i+8064] for i in range(0, len(raw), 8064) if i+8064 <= len(raw)]
+                if raw_samples:
+                    loaded_templates.append((uid_int, subtype, raw_samples))
+            except Exception:
+                continue
+
+        matched_early = False
+
+        # Pass 1: Quick direct check (0° rotation across all template samples)
+        for uid_int, subtype, samples in loaded_templates:
+            for sample in samples:
+                b_raw = np.frombuffer(sample, dtype=np.uint8).reshape((56, 144)).astype(np.float32)
+                b_norm = (b_raw - b_raw.mean()) * hann
+                fb = np.fft.fft2(b_norm)
+                cross_power = (fb * conj_fa) / (np.abs(fb * conj_fa) + 1e-9)
+                peak = float(np.max(np.abs(np.fft.ifft2(cross_power))))
+                if peak > best_score:
+                    best_score = peak
+                    best_match = (uid_int, subtype)
+                if peak >= 0.18:
+                    matched_early = True
+                    break
+            if matched_early:
+                break
+
+        # Pass 2: Angular tilt sweep if Pass 1 didn't reach high confidence
+        if not matched_early:
+            for uid_int, subtype, samples in loaded_templates:
+                for sample in samples:
+                    b_raw = np.frombuffer(sample, dtype=np.uint8).reshape((56, 144))
+                    b_pil = Image.fromarray(b_raw)
+                    for angle in [-3, 3, -6, 6, -9, 9, -12, 12]:
+                        b_rot = np.array(b_pil.rotate(angle, resample=Image.BILINEAR)).astype(np.float32)
+                        b_norm = (b_rot - b_rot.mean()) * hann
+                        fb = np.fft.fft2(b_norm)
+                        cross_power = (fb * conj_fa) / (np.abs(fb * conj_fa) + 1e-9)
+                        peak = float(np.max(np.abs(np.fft.ifft2(cross_power))))
+                        if peak > best_score:
+                            best_score = peak
+                            best_match = (uid_int, subtype)
+                        if peak >= 0.18:
+                            matched_early = True
+                            break
+                    if matched_early:
+                        break
+                if matched_early:
+                    break
+
+        elapsed_ms = (time.time() - t0) * 1000.0
+        logging.info(f"Host match evaluation: best_score={best_score:.4f}, threshold=0.11, matched={best_score >= 0.11}, best_match={best_match}, elapsed={elapsed_ms:.1f}ms")
+        if best_match and best_score >= 0.11:
+            hsh = hashlib.sha256(verify_img).digest()
+            return best_match[0], best_match[1], hsh
+        else:
+            return 0, 0, b''
+
     def enroll(self, identity: SidIdentity, subtype: int,
                update_cb: typing.Callable[[typing.Any, typing.Optional[Exception]], None]):
+        if self.device_info.type in [0x121, 0x2449]:
+            tdir = get_templates_dir()
+            ident_str = getattr(identity, 'value', str(identity))
+            uid_str = None
+            if hasattr(identity, 'subauth') and len(identity.subauth) > 0:
+                uid_str = str(identity.subauth[-1])
+            elif hasattr(identity, 'subauthorities') and len(identity.subauthorities) > 0:
+                uid_str = str(identity.subauthorities[-1])
+            elif '-' in str(identity):
+                try:
+                    uid_str = str(identity).split('-')[-1]
+                except:
+                    pass
+
+            samples = []
+            for stage in range(5):
+                while True:
+                    try:
+                        glow_start_scan()
+                        self.capture(CaptureMode.ENROLL)
+                        img = self.last_image
+                        glow_end_scan()
+
+                        # Finger-lift check: if identical to previous sample, user didn't lift finger
+                        if len(samples) > 0 and host_match_score(img, samples[-1]) > 0.95:
+                            logging.info("Same finger touch detected; please lift finger and touch again...")
+                            time.sleep(0.8)
+                            continue
+
+                        samples.append(img)
+                        # Emit enroll-stage-passed for stages 0..3 (stages 1 to 4)
+                        # Stage 4 completion will naturally trigger enroll-completed when enroll() returns
+                        if stage < 4:
+                            update_cb(b'\x01', None)
+                        time.sleep(0.8)
+                        break
+                    except CancelledException as e:
+                        glow_end_scan()
+                        raise e
+                    except Exception as e:
+                        update_cb(None, e)
+                        time.sleep(1)
+
+            tpl_data = b''.join(samples)
+            tpl_path = os.path.join(tdir, f"{ident_str}_{subtype}.dat")
+            with open(tpl_path, 'wb') as fp:
+                fp.write(tpl_data)
+
+            if uid_str and uid_str != ident_str:
+                uid_path = os.path.join(tdir, f"{uid_str}_{subtype}.dat")
+                with open(uid_path, 'wb') as fp:
+                    fp.write(tpl_data)
+
+            glow_end_scan()
+            return 1
+
         def do_create_finger(final_template: bytes, tid: bytes):
             tinfo = self.make_finger_data(subtype, final_template, tid)
 
@@ -895,6 +1168,23 @@ class Sensor:
             tls.app(unhexlify('6200000000'))
 
     def identify(self, update_cb: typing.Callable[[Exception], None]):
+        if self.device_info.type in [0x121, 0x2449]:
+            while True:
+                try:
+                    glow_start_scan()
+                    self.capture(CaptureMode.IDENTIFY)
+                    glow_end_scan()
+                    break
+                except CancelledException as e:
+                    glow_end_scan()
+                    raise e
+                except Exception as e:
+                    update_cb(e)
+                    time.sleep(1)
+
+            verify_img = self.last_image
+            return self.match_host_finger(verify_img)
+
         while True:
             try:
                 glow_start_scan()

@@ -10,7 +10,7 @@ setup(name='python-validity',
           'bin/validity-led-dance',
           'bin/validity-sensors-firmware',
       ],
-      install_requires=['cryptography >= 2.1.4', 'pyusb >= 1.0.0', 'pyyaml >= 3.12'],
+      install_requires=['cryptography >= 2.1.4', 'pyusb >= 1.0.0', 'pyyaml >= 3.12', 'numpy'],
       data_files=[
           ('share/dbus-1/system.d/', ['dbus_service/io.github.uunicorn.Fprint.conf']),
           ('lib/python-validity/', ['dbus_service/dbus-service']),

@@ -27,7 +27,7 @@ from validitysensor.init_data_dir import PYTHON_VALIDITY_DATA_DIR, init_data_dir
 from validitysensor.sensor import sensor, RebootException
 from validitysensor.sid import sid_from_string
 from validitysensor.tls import tls
-from validitysensor.usb import usb
+from validitysensor.usb import usb, CancelledException
 from validitysensor.fingerprint_constants import finger_ids
 
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
@@ -73,17 +73,41 @@ class Device(dbus.service.Object):
         logging.debug('In Resume')
         tls.reset()
         try:
-            init.open_common()
+            init.open()
         except:
-            init.open_common()
+            init.open()
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature="s", out_signature="as")
     def ListEnrolledFingers(self, user):
         try:
             logging.debug('In ListEnrolledFingers %s' % user)
+            import glob
+            from validitysensor.sensor import get_templates_dir
+            tdir = get_templates_dir()
+            try:
+                uid = pwd.getpwnam(user).pw_uid
+                user_patterns = [f"{uid}_*.dat", f"{user}_*.dat", f"*-{uid}_*.dat"]
+            except:
+                user_patterns = [f"{user}_*.dat", "*_*.dat"]
+
+            enrolled = []
+            for pat in user_patterns:
+                for fpath in glob.glob(os.path.join(tdir, pat)):
+                    fname = os.path.basename(fpath)[:-4]
+                    parts = fname.rsplit('_', 1)
+                    if len(parts) == 2:
+                        try:
+                            st = int(parts[1])
+                            f_name = subtype_to_string(st)
+                            if f_name not in enrolled and f_name != 'Unknown':
+                                enrolled.append(f_name)
+                        except ValueError:
+                            pass
+            if enrolled:
+                logging.debug('Enrolled from host templates: %s' % repr(enrolled))
+                return enrolled
 
             usr = self.user2record(user)
-
             if usr is None:
                 return []
 
@@ -91,25 +115,39 @@ class Device(dbus.service.Object):
             logging.debug(repr(rc))
             return rc
         except Exception as e:
-            raise e
+            logging.exception(e)
+            return []
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='s', out_signature='')
     def DeleteEnrolledFingers(self, user):
         logging.debug('In DeleteEnrolledFingers %s' % user)
+        import glob
+        from validitysensor.sensor import get_templates_dir
+        tdir = get_templates_dir()
+        try:
+            uid = pwd.getpwnam(user).pw_uid
+            for pat in [f"{uid}_*.dat", f"{user}_*.dat", f"*-{uid}_*.dat"]:
+                for fpath in glob.glob(os.path.join(tdir, pat)):
+                    try:
+                        os.remove(fpath)
+                    except:
+                        pass
+        except:
+            pass
+
         usr = self.user2record(user)
-
-        if usr is None:
-            return
-
-        db.del_record(usr.dbid)
+        if usr is not None:
+            try:
+                db.del_record(usr.dbid)
+            except:
+                pass
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='ss', out_signature='')
     def VerifyStart(self, user, finger):
         logging.debug('In VerifyStart for %s, %s' % (user, finger))
 
-        usr = self.user2record(user)
-
-        if usr is None:
+        enrolled = self.ListEnrolledFingers(user)
+        if not enrolled:
             raise NoEnrolledPrints()
 
         self.VerifyFingerSelected('any')
@@ -119,12 +157,13 @@ class Device(dbus.service.Object):
 
         def run():
             try:
-                # TODO: pass down the user db record id and implement a proper Sensor.verify() method
                 usrid, subtype, hsh = sensor.identify(update_cb)
-                if usr.dbid == usrid:
+                if usrid != 0:
                     self.VerifyStatus('verify-match', True)
                 else:
                     self.VerifyStatus('verify-no-match', True)
+            except CancelledException:
+                logging.info('Verification cancelled by client')
             except usb_core.USBError as e:
                 logging.exception(e)
                 self.VerifyStatus('verify-no-match', True)

@@ -4,8 +4,9 @@ After=open-fprintd.service
 
 [Service]
 Type=simple
-ExecStart=/usr/lib/python-validity/dbus-service --debug
-Restart=no
+ExecStart=/usr/lib/python-validity/dbus-service
+Restart=on-failure
+RestartSec=2
 
 [Install]
 WantedBy=multi-user.target

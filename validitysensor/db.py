@@ -197,6 +197,17 @@ class Db:
 
     def del_record(self, dbid: int):
         assert_status(tls.cmd(pack('<BH', 0x48, dbid)))
+        try:
+            import glob, os
+            for p in ['/var/lib/python-validity/templates', '/tmp/python-validity/templates']:
+                if os.path.isdir(p):
+                    for f in glob.glob(os.path.join(p, f"{dbid}_*.dat")):
+                        try:
+                            os.remove(f)
+                        except:
+                            pass
+        except:
+            pass
 
     def db_info(self):
         rsp = tls.cmd(b'\x45')
