@@ -210,11 +210,13 @@ class Db:
 
         return Db.Info(total, used, free, records, roots)
 
-    def new_record(self, parent: int, typ: int, storage: int, data: bytes):
+    def new_record(self, parent: int, typ: int, storage: int, data: bytes, trailer: bytes = b''):
+        """Create a record. `trailer` is appended after `data` but NOT counted
+        in the size field (the MoH type-6 finger store sends one 0x00 byte)."""
         self.db_info()  # TODO check free space, compact the partition when out of storage
         assert_status(tls.cmd(db_write_enable))
         try:
-            rsp = tls.cmd(pack('<BHHHH', 0x47, parent, typ, storage, len(data)) + data)
+            rsp = tls.cmd(pack('<BHHHH', 0x47, parent, typ, storage, len(data)) + data + trailer)
             assert_status(rsp)
             recid, = unpack('<H', rsp[2:])
         finally:

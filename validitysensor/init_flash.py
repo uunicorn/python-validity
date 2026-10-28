@@ -53,6 +53,17 @@ e44f7a80d6137794d330b5d026c328a73c907f3f653d411255b7c2f8b425d870a8a53c6630ca864b
 ac2c08c00abf43faa5528a0a8e49b02c507b01b6f1c9abffc669d8c84d7e4a714da32aade7928eca9698b82bee6b72c642c9add80bbd7ccc4121b80220d52b8a
 ''')
 
+# 06cb:00a2 uses the same partition layout as the generic flash_layout_hardcoded
+# (byte-exact), but the partition table is signed with a device-model-specific
+# key, so it needs its own signature. Extracted byte-exact from the Windows
+# driver's reset/format capture (1780409730-usb.txt, 0x4f command).
+partition_signature_a2 = unhex('''
+f52c94d3a340cd3d166516582be27d2c6f497fcf4f511b23f70f86927d48004330e4f17f3d1231fd8a0c9ff712c63759b8933a15cd7046f86c0b75d95fd54e93
+ff9e174f837eb643922d9c7bd5261f9139e40ca53e2a9735f7d472047c5eca6b463e2d1e42a147e54943e7cceba15b7f8452548a6b7f453336a3dbed6194f3a7
+705618132c3775f5906fe1baf4f87245865ae3cbe97c7a41858e87488ccd26077de5e3869b2ff22cf213377575a7a4dc5bc202bbb3539da9593df1d5616309ce
+f84b3f45e1a4f2c3c4b45e856bb0eef652d916539b944da210e78537f9cb8d41b949fddb1af6ac8226b6e5763b3d570e901fa0f96d21de915fec1f945146a362
+''')
+
 crypto_backend = default_backend()
 
 
@@ -141,6 +152,10 @@ def init_flash():
         if usb.usb_dev().idProduct == 0x0090:
             layout = flash_layout_hardcoded_0090
             signature = partition_signature_0090
+    elif usb.usb_dev().idVendor == 0x06cb:
+        if usb.usb_dev().idProduct == 0x00a2:
+            # same layout as generic, but a2-specific table signature
+            signature = partition_signature_a2
 
     partition_flash(info, layout, signature, client_public)
 
