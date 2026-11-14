@@ -5,7 +5,7 @@ sudo dnf install rpm-build rpmdevtools python3-devel checkpolicy policycoreutils
 
 rpmdev-setuptree
 
-git archive --format=tar.gz --prefix="python-validity-$VERSION/" -o "~/rpmbuild/SOURCES/python-validity-$VERSION.tar.gz" HEAD
+git archive --format=tar.gz --prefix="python-validity-$VERSION/" -o "$HOME/rpmbuild/SOURCES/python-validity-$VERSION.tar.gz" HEAD
 
 cp python-validity.spec ~/rpmbuild/SPECS
 
