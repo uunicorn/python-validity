@@ -89,7 +89,7 @@ fi
 %{_prefix}/lib/systemd/system/python3-validity.service
 %{_prefix}/lib/udev/rules.d/40-python3-validity.udev
 %{python3_sitelib}/validitysensor/
-%{python3_sitelib}/python_%{pypi_name}-%{version}-py*.egg-info/
+%{python3_sitelib}/python_%{pypi_name}-%{version}.dist-info/
 %{_bindir}/validity-led-dance
 %{_bindir}/validity-sensors-firmware
 %{_prefix}/lib/%{name}/dbus-service
