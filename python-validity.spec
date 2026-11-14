@@ -8,7 +8,6 @@ Summary:        Validity fingerprint sensor driver
 License:        MIT
 URL:            https://github.com/uunicorn/%{name}
 Source0:        %{name}-%{version}.tar.gz
-#Source0:        https://github.com/uunicorn/%{name}/archive/%{version}.tar.gz
 BuildArch:      noarch
 
 
