@@ -37,7 +37,7 @@ Validity fingerprint sensor driver.
 
 
 %build
-%py3_build
+%pyproject_wheel
 
 cd selinux
 checkmodule -M -m -o python3-validity.mod python3-validity.te
@@ -47,7 +47,7 @@ cd ..
 
 
 %install
-%py3_install
+%pyproject_install
 
 %__install -d -m 0700 $RPM_BUILD_ROOT%{_sysconfdir}/python-validity
 %__install -m 0600 etc/python-validity/dbus-service.yaml $RPM_BUILD_ROOT%{_sysconfdir}/python-validity/
