@@ -1,6 +1,6 @@
 import logging
 import typing
-from os.path import basename
+from os.path import basename, normpath
 from time import ctime
 
 from .firmware_tables import FIRMWARE_NAMES
@@ -45,6 +45,8 @@ def upload_fwext(fw_path: typing.Optional[str] = None):
         fw_path = default_name
     elif basename(fw_path) != default_name:
         logging.warning('WARNING: Your device fw is supposed to be called {}'.format(default_name))
+
+    fw_path = normpath(fw_path)
 
     with open(fw_path, 'rb') as f:
         fwext = f.read()
