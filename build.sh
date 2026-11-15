@@ -1,7 +1,7 @@
 #!/bin/bash
 VERSION="0.15"
 
-sudo dnf install rpm-build rpmdevtools python3-devel checkpolicy policycoreutils bzip2 innoextract
+sudo dnf install rpm-build rpmdevtools python3-devel python3-setuptools checkpolicy policycoreutils bzip2 innoextract
 
 rpmdev-setuptree
 
