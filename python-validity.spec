@@ -1,14 +1,13 @@
 %global pypi_name validity
 
 Name:           python-%{pypi_name}
-Version:        0.12
+Version:        0.15
 Release:        1%{?dist}
 Summary:        Validity fingerprint sensor driver
 
 License:        MIT
 URL:            https://github.com/uunicorn/%{name}
 Source0:        %{name}-%{version}.tar.gz
-#Source0:        https://github.com/uunicorn/%{name}/archive/%{version}.tar.gz
 BuildArch:      noarch
 
 
@@ -38,7 +37,7 @@ Validity fingerprint sensor driver.
 
 
 %build
-%py3_build
+%pyproject_wheel
 
 cd selinux
 checkmodule -M -m -o python3-validity.mod python3-validity.te
@@ -48,7 +47,7 @@ cd ..
 
 
 %install
-%py3_install
+%pyproject_install
 
 %__install -d -m 0700 $RPM_BUILD_ROOT%{_sysconfdir}/python-validity
 %__install -m 0600 etc/python-validity/dbus-service.yaml $RPM_BUILD_ROOT%{_sysconfdir}/python-validity/
@@ -90,7 +89,7 @@ fi
 %{_prefix}/lib/systemd/system/python3-validity.service
 %{_prefix}/lib/udev/rules.d/40-python3-validity.udev
 %{python3_sitelib}/validitysensor/
-%{python3_sitelib}/python_%{pypi_name}-%{version}-py*.egg-info/
+%{python3_sitelib}/python_%{pypi_name}-%{version}.dist-info/
 %{_bindir}/validity-led-dance
 %{_bindir}/validity-sensors-firmware
 %{_prefix}/lib/%{name}/dbus-service

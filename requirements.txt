@@ -1,0 +1,4 @@
+cryptography >= 2.1.4
+pyusb >= 1.0.0
+pyyaml >= 3.12
+setuptools
