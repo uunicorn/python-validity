@@ -870,7 +870,8 @@ class Sensor:
             rsp = tls.app(cmd)
             assert_status(rsp)
 
-            b = usb.wait_int()
+            # The sensor drops off the USB bus if the match is interrupted, so let it finish
+            b = usb.wait_int(cancellable=False)
             if b[0] != 3:
                 raise Exception('Finger not recognized: %s' % hexlify(b).decode())
 
