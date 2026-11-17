@@ -4,6 +4,7 @@ import typing
 from binascii import hexlify, unhexlify
 from enum import Enum
 from struct import unpack
+from time import monotonic
 
 import usb.core as ucore
 from usb.core import USBError
@@ -122,8 +123,10 @@ class Usb:
     def cancel(self):
         self.cancel = True
 
-    def wait_int(self):
+    # With cancellable=False a cancel request is ignored and the wait gives up after max_wait seconds instead.
+    def wait_int(self, cancellable: bool = True, max_wait: float = 5):
         self.cancel = False
+        deadline = monotonic() + max_wait
 
         while True:
             try:
@@ -133,7 +136,10 @@ class Usb:
                 return resp
             except USBError as e:
                 if e.errno == errno.ETIMEDOUT:
-                    if self.cancel:
+                    if cancellable:
+                        if self.cancel:
+                            raise CancelledException()
+                    elif monotonic() > deadline:
                         raise CancelledException()
                 else:
                     raise e
