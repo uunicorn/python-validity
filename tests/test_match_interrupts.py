@@ -30,6 +30,19 @@ class MatchInterruptTests(unittest.TestCase):
     def test_969_firmware_can_use_interrupt_5_for_no_template(self):
         self.assert_no_match_interrupt(0x969, 5)
 
+    def test_d51_b7_firmware_uses_interrupt_05003104db_for_no_template(self):
+        # Captured on physical 06cb:00b7 / 0xd51 (57K0 FM-3439-001) hardware.
+        original_type = getattr(sensor, 'real_device_type', None)
+        sensor.real_device_type = 0xd51
+        try:
+            with patch('validitysensor.sensor.tls.app', return_value=b'\x00\x00'), \
+                    patch('validitysensor.sensor.usb.wait_int',
+                          return_value=b'\x05\x00\x31\x04\xdb'):
+                with self.assertRaises(FingerNotMatchedException):
+                    sensor.match_finger()
+        finally:
+            sensor.real_device_type = original_type
+
     def test_unrelated_interrupt_4_is_not_misclassified(self):
         original_type = getattr(sensor, 'real_device_type', None)
         sensor.real_device_type = 0xd51

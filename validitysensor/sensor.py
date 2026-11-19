@@ -28,6 +28,10 @@ class FingerNotMatchedException(Exception):
     """A valid capture completed, but no on-chip template matched."""
 
 
+class NoFingerException(Exception):
+    """The capture poll window elapsed with no finger contact (status 0x0007)."""
+
+
 line_update_type1_devices = [
     0xB5, 0x885, 0xB3, 0x143B, 0x1055, 0xE1, 0x8B1, 0xEA, 0xE4, 0xED, 0x1825, 0x1FF5, 0x199,
     0xD51,  # HP EliteBook 840 G5 (138a:00ab) / HP G6 series (06cb:00b7)
@@ -805,6 +809,8 @@ class Sensor:
                     break
 
             res = get_prg_status2()
+            if len(res) >= 2 and unpack('<H', res[:2])[0] == 7:
+                raise NoFingerException('No finger detected during capture poll window')
 
             assert_status(res)
             res = res[2:]
@@ -970,14 +976,17 @@ class Sensor:
             b = usb.wait_int()
 
             # Both 04 000100db and 05 000100db are clean on-chip no-template
-            # results on this family. Earlier hardware evidence suggested the
-            # leading byte was subtype-specific (4 on 0x969, 5 on 0xd51), but
-            # physical 138a:00ab / 0xd51 firmware also emitted 4 after reboot.
-            # Match the complete observed packet so unrelated interrupt 4/5
-            # failures are not accidentally classified as a false negative.
+            # results on this family, and physical 06cb:00b7 / 0xd51 firmware
+            # (57K0 FM-3439-001) emits 05 003104db. Earlier hardware evidence
+            # suggested the leading byte was subtype-specific (4 on 0x969, 5 on
+            # 0xd51), but physical 138a:00ab / 0xd51 firmware also emitted 4
+            # after reboot. Match the complete observed packets so unrelated
+            # interrupt 4/5 failures are not accidentally classified as a false
+            # negative.
             no_template_packets = {
                 b'\x04\x00\x01\x00\xdb',
                 b'\x05\x00\x01\x00\xdb',
+                b'\x05\x00\x31\x04\xdb',
             }
             if (getattr(self, 'real_device_type', None) in (0xd51, 0x969)
                     and b in no_template_packets):
@@ -1018,6 +1027,12 @@ class Sensor:
                     raise e
                 except CancelledException as e:
                     raise e
+                except NoFingerException:
+                    # On 0xd51 (e.g. 06cb:00b7), chunk 0x4e times out after ~390ms
+                    # with status 0x0007 when no finger is touching the sensor.
+                    # Re-poll immediately without sleeping 1s or emitting a false
+                    # verify-retry-scan signal.
+                    continue
                 except Exception as e:
                     # Capture failed, retry
                     update_cb(e)

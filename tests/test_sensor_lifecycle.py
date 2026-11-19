@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from validitysensor.sensor import sensor
+from validitysensor.sensor import NoFingerException, sensor
 from validitysensor.usb import CancelledException
 
 
@@ -40,6 +40,22 @@ class SensorLifecycleTests(unittest.TestCase):
             self.assertEqual(sensor.identify(updates.append), expected)
 
         self.assertEqual(updates, [rejected])
+        self.assertEqual(glow_start.call_count, 2)
+        self.assertEqual(glow_end.call_count, 2)
+
+    @patch('validitysensor.sensor.sleep')
+    @patch('validitysensor.sensor.glow_end_scan')
+    @patch('validitysensor.sensor.glow_start_scan')
+    def test_idle_no_finger_poll_does_not_sleep_or_emit_retry(
+            self, glow_start, glow_end, mock_sleep):
+        expected = (12, 3, b'hash')
+        updates = []
+        with patch.object(sensor, 'capture', side_effect=[NoFingerException(), None]), \
+                patch.object(sensor, 'match_finger', return_value=expected):
+            self.assertEqual(sensor.identify(updates.append), expected)
+
+        self.assertEqual(updates, [])
+        mock_sleep.assert_not_called()
         self.assertEqual(glow_start.call_count, 2)
         self.assertEqual(glow_end.call_count, 2)
 
