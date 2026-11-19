@@ -114,7 +114,19 @@ def factory_reset():
             'let Windows reinstall it — then boot Linux). See '
             'uunicorn/python-validity#256 for the tracking issue.')
     assert_status(rsp)
-    assert_status(usb.cmd(b'\x10' + b'\0' * 0x61))
+    rsp = usb.cmd(b'\x10' + b'\0' * 0x61)
+    status, = unpack('<H', rsp[:2])
+    if status == 0x404:
+        # Observed on 06cb:00b7 / 0x969 (57K0 FM-3439-002): the HP reset_blob
+        # is accepted (0000), but the commit that applies it is refused with
+        # 0404 and the flash is left untouched (PR #256).
+        raise Exception(
+            'factory_reset failed: the chip accepted reset_blob but refused '
+            'to apply it (commit returned 0404); flash was not changed. On '
+            'HP systems, use the BIOS "Fingerprint Reset on Reboot" option '
+            'instead, then attach the read-only scripts/clean-slate-probe.py '
+            'output to uunicorn/python-validity#256.')
+    assert_status(rsp)
     reboot()
 
 
@@ -785,10 +797,14 @@ class Sensor:
                 raise Exception('wait_start: Unexpected interrupt type %s' % hexlify(b).decode())
 
             # wait for finger
-            # Sensor type 0xd51 (138a:00ab, 06cb:00b7) does not emit the
-            # b[0]=2 "finger detected" interrupt — it jumps directly from the
-            # start ack to b[0]=3 capture events. Accept b[0]=3 as a substitute
-            # and pass the interrupt through to the wait-capture-complete loop.
+            # On 0xd51 / 0x969 silicon, whether the chip emits the b[0]=2
+            # "finger detected" interrupt depends on the capture program, not
+            # on the device: Windows USB captures of one 138a:00ab / 0xd51
+            # unit show type-2 during both enroll and verify, while our
+            # IDENTIFY program goes straight from the start ack to b[0]=3
+            # capture events. Accept either, and pass a b[0]=3 interrupt
+            # through to the wait-capture-complete loop. Never key device
+            # type or behavior off the absence of type-2 (PR #256).
             saved_b = None
             while True:
                 b = usb.wait_int()
