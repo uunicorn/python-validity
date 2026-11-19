@@ -14,9 +14,12 @@ def __load_blob(blob: str) -> bytes:
         if usb.usb_dev().idProduct == 0x009a:
             from . import blobs_9a as blobs
         elif usb.usb_dev().idProduct == 0x00b7:
-            # HP EliteBook x360 1040 G6 (0x969). Same blobs as blobs_9a except
-            # reset_blob, and this one is accepted by the chip where the 9a
-            # reset_blob is rejected with status 0404.
+            # Both 00b7 variants (0xd51 / FM-3439-001 and 0x969 / FM-3439-002)
+            # accept the 11973-byte HP reset_blob (byte-identical in
+            # blobs_d51 and blobs_00cb); blobs_9a's Lenovo reset_blob is
+            # rejected with 0404. The other three blobs are identical across
+            # all three sets. Zero-partition provisioning is still gated by
+            # sensor identity in init_flash().
             from . import blobs_00cb as blobs
         elif usb.usb_dev().idProduct == 0x00cb:
             from . import blobs_00cb as blobs   # HP Pavilion x360 14-dh; 0x969, own reset_blob
