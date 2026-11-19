@@ -1,3 +1,22 @@
+python-validity (0.16~hp19) noble; urgency=medium
+
+  * Use the HP 11973-byte reset_blob for 06cb:00b7. Both observed variants
+    (0xd51 / FM-3439-001 and 0x969 / FM-3439-002) accept it; the previously
+    mapped Lenovo blobs_9a reset_blob was rejected with 0404. Zero-partition
+    provisioning remains gated by full sensor identity.
+  * Fix the verify idle-poll blind spot on 0xd51: status 0x0007 (no finger
+    in the ~390 ms poll window) re-polls immediately instead of emitting a
+    premature verify-retry-scan and sleeping 1 s, and classify interrupt
+    05003104db as a clean no-match.
+  * factory_reset: report explicitly when the chip accepts reset_blob but
+    refuses to apply it (commit 0404), and point HP users at the BIOS reset.
+  * Correct the capture comment: the b[0]=2 finger-down interrupt depends on
+    the capture program, not the device.
+  * Document Arch/Manjaro/CachyOS packaging, and extend the PR #256 evidence
+    ledger through 2026-11-19.
+
+ -- Dev Tochukwu <devtochukwu@users.noreply.github.com>  Thu, 19 Nov 2026 12:00:00 +0100
+
 python-validity (0.16~hp18) noble; urgency=medium
 
   * Allow the captured d51 clean-slate sequence for the second independently

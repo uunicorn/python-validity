@@ -41,6 +41,22 @@ $ yay -S python-validity
 $ fprintd-enroll
 ```
 
+Arch / Manjaro / CachyOS notes for HP `0xd51` / `0x969` readers (testers on
+PR #256):
+
+- `fprintd-clients` does not exist on Arch; install `fprintd-clients-git`
+  (AUR). On Manjaro the client tools ship inside `fprintd` itself.
+- Stock `fprintd` claims the same `net.reactivated.Fprint` D-Bus name as
+  `open-fprintd`. Remove it (`pacman -R fprintd`; `-Rdd` only if you
+  understand the dependency break) or mask `fprintd.service` before enabling
+  `open-fprintd.service` and `python3-validity.service`.
+- The AUR `python-validity` package is still upstream 0.15. Until this work is
+  released, build it from this branch by pointing the PKGBUILD `source` and
+  `pkgver` at a pinned commit.
+- The AUR package also ships `python3-validity-suspend-hotfix.service`, which
+  restarts the daemon on resume. Current builds resume without it, so it is
+  optional.
+
 On Fedora Linux
 
 ```
@@ -98,7 +114,7 @@ similar sensor type:
 | USB ID | Provisioned sensor | Zero-partition sensor |
 |---|---|---|
 | `138a:00ab` | Supported | Supported only when the full ROM and sensor identity matches the captured `0xd51` / `57K0 FM- 154-120` fixture |
-| `06cb:00b7` | Supported | Supported only for the observed `0xd51` / `57K0 FM-3439-001` identity with the d51 boot ROM |
+| `06cb:00b7` | Supported | Supported only for the observed `0xd51` / `57K0 FM-3439-001` identity with the d51 boot ROM. `0x969` / `57K0 FM-3439-002` is refused pending a pinned reproduction |
 | `06cb:00cb` | Supported | Uses its own device-specific reset payload |
 
 The validated d51 bootstrap reproduces the command ordering and 11,973-byte
@@ -113,6 +129,11 @@ write gate checks the boot ROM, real type, and sensor name before sending the
 destructive reset packet. Any other zero-partition model remains refused: keep
 that state intact and attach its read-only probe plus a Windows capture to PR
 #256 rather than trying payloads from adjacent models.
+
+Both `06cb:00b7` variants accept the HP reset payload, but on
+`0x969` / `FM-3439-002` the chip then refuses to apply it (`factory_reset`
+reports "refused to apply", status `0404`), so the flash stays unchanged. On HP
+systems the BIOS option "Fingerprint Reset on Reboot" does wipe these sensors.
 
 ## Enabling fingerprint for system authentication
 
