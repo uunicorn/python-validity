@@ -135,6 +135,12 @@ Both `06cb:00b7` variants accept the HP reset payload, but on
 reports "refused to apply", status `0404`), so the flash stays unchanged. On HP
 systems the BIOS option "Fingerprint Reset on Reboot" does wipe these sensors.
 
+Before running `dbus-service` or any provisioning step by hand, stop the
+service with `sudo systemctl mask --now python3-validity`, not `disable`: the
+udev rule starts it on every USB add event even when it is disabled. A second
+daemon that grabs the sensor mid-provisioning leaves it with partitions but no
+TLS pairing keys. Unmask the service afterwards.
+
 ## Enabling fingerprint for system authentication
 
 if it doesn't come automatically, you might need to make changes to files in `/etc/pam.d` to enable fingerprint login (depending on your distro).
