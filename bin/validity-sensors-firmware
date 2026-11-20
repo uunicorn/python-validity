@@ -29,7 +29,10 @@ import urllib.request
 
 from usb import core as usb_core
 
-from validitysensor.init_data_dir import PYTHON_VALIDITY_DATA_DIR
+from validitysensor.init_data_dir import (
+    PYTHON_VALIDITY_FIRMWARE_DIR,
+    init_data_dir,
+)
 from validitysensor.firmware_tables import FIRMWARE_NAMES, FIRMWARE_URIS
 from validitysensor.usb import SupportedDevices
 
@@ -47,30 +50,59 @@ def download_and_extract_fw(dev_type, fwdir, fwuri=None):
     req.add_header('Referer', FIRMWARE_URIS[dev_type].get('referral', ''))
     req.add_header('User-Agent', 'Mozilla/5.0 (X11; U; Linux)')
 
-    hash = hashlib.sha512()
+    archive_hash = hashlib.sha512()
     with urllib.request.urlopen(req) as response:
         with open(fwarchive, 'wb') as out_file:
-            data = response.read()
-            hash.update(data)
-            out_file.write(data)
+            while True:
+                data = response.read(1024 * 1024)
+                if not data:
+                    break
+                archive_hash.update(data)
+                out_file.write(data)
 
-    actual_hash = hash.hexdigest()
+    actual_hash = archive_hash.hexdigest()
     if actual_hash != expected_hash:
         raise Exception('Hash mismatch for driver download! Expected {}, got {}'.format(
             expected_hash, actual_hash))
 
-    subprocess.check_call([
-        'innoextract', '--output-dir', fwdir, '--include', fwname, '--collisions', 'overwrite',
-        fwarchive
-    ])
+    # Lenovo softpaqs are Inno Setup installers; HP softpaqs are CAB-wrapped
+    # self-extracting exes. Try innoextract first, fall back to cabextract.
+    try:
+        subprocess.check_call([
+            'innoextract', '--output-dir', fwdir, '--include', fwname,
+            '--collisions', 'overwrite', fwarchive
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        try:
+            # No -F filter: HP softpaqs nest the target under e.g. src/driver/INF/x64/,
+            # and cabextract -F matches the full path. Extract everything; the find
+            # call below locates the target file regardless of subdirectory.
+            subprocess.check_call(
+                ['cabextract', '-q', '-d', fwdir, fwarchive],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            raise Exception(
+                'Failed to extract {} from {}: neither innoextract nor cabextract '
+                'could handle the archive ({}).'.format(fwname, fwarchive, e))
 
-    fwpath = subprocess.check_output(['find', fwdir, '-name', fwname]).decode('utf-8').strip()
-    print('Found firmware at {}'.format(fwpath))
-
-    if not fwpath:
+    fwpath = None
+    for root, _, files in os.walk(fwdir):
+        if fwname in files:
+            fwpath = os.path.join(root, fwname)
+            break
+    if fwpath is None:
         raise Exception('No {} found in the archive'.format(fwname))
 
     return fwpath
+
+
+def install_firmware(source, destination):
+    temporary = destination + '.installing'
+    shutil.copyfile(source, temporary)
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, destination)
 
 
 if __name__ == "__main__":
@@ -82,6 +114,8 @@ if __name__ == "__main__":
     if os.geteuid() != 0:
         raise Exception('This script needs to be executed as root')
 
+    init_data_dir()
+
     dev_type = None
     for d in SupportedDevices:
         dev = usb_core.find(idVendor=d.value[0], idProduct=d.value[1])
@@ -91,12 +125,27 @@ if __name__ == "__main__":
     if not dev_type:
         raise Exception('No supported validity device found')
 
-    try:
-        subprocess.check_call(['innoextract', '--version'], stdout=subprocess.DEVNULL)
-    except Exception as e:
-        print('Impossible to run innoextract: {}'.format(e))
+    destination = os.path.join(
+        PYTHON_VALIDITY_FIRMWARE_DIR,
+        FIRMWARE_NAMES[dev_type],
+    )
+    if os.path.isfile(destination):
+        print('Firmware already cached at {}'.format(destination))
+        sys.exit(0)
+
+    have_extractor = False
+    for tool in ('innoextract', 'cabextract'):
+        try:
+            subprocess.check_call([tool, '--version'], stdout=subprocess.DEVNULL)
+            have_extractor = True
+            break
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            continue
+    if not have_extractor:
+        print('Need at least one of innoextract or cabextract installed.')
         sys.exit(1)
 
     with tempfile.TemporaryDirectory() as fwdir:
         fwpath = download_and_extract_fw(dev_type, fwdir, fwuri=args.driver_uri)
-        shutil.copy(fwpath, PYTHON_VALIDITY_DATA_DIR)
+        install_firmware(fwpath, destination)
+        print('Firmware ready at {}'.format(destination))

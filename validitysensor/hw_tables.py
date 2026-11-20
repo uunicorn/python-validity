@@ -440,9 +440,12 @@ def dev_info_lookup(major: int, ver: int):
         if ver == 0 or masked_ver == 0:
             fuzzy_match = i
         elif ver == masked_ver:
-            return i
+            return DeviceInfo(i.major, i.type, i.version, i.version_mask, i.name)
 
-    return fuzzy_match
+    if fuzzy_match is None:
+        return None
+    return DeviceInfo(fuzzy_match.major, fuzzy_match.type, fuzzy_match.version,
+                      fuzzy_match.version_mask, fuzzy_match.name)
 
 
 class FlashIcInfo:

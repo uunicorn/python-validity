@@ -28,8 +28,11 @@ def close():
 
 def open_common():
     init_data_dir()
-    init_flash()
+    # Synaptics' d51 factory path initializes the ROM transport before it
+    # probes/formats flash. A zero-partition sensor rejects the reset payload
+    # with 0x0404 if formatting is attempted first.
     usb.send_init()
+    init_flash()
     tls.parse_tls_flash(read_tls_flash())
     tls.open()
     upload_fwext()

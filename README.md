@@ -29,7 +29,7 @@ $ sudo apt remove fprintd
 $ sudo add-apt-repository ppa:uunicorn/open-fprintd
 $ sudo apt-get update
 $ sudo apt install open-fprintd fprintd-clients python3-validity
-...wait a bit...
+$ sudo reboot
 $ fprintd-enroll
 ```
 
@@ -40,6 +40,22 @@ $ yay -S python-validity
 (Press Enter twice when prompted)
 $ fprintd-enroll
 ```
+
+Arch / Manjaro / CachyOS notes for HP `0xd51` / `0x969` readers (testers on
+PR #256):
+
+- `fprintd-clients` does not exist on Arch; install `fprintd-clients-git`
+  (AUR). On Manjaro the client tools ship inside `fprintd` itself.
+- Stock `fprintd` claims the same `net.reactivated.Fprint` D-Bus name as
+  `open-fprintd`. Remove it (`pacman -R fprintd`; `-Rdd` only if you
+  understand the dependency break) or mask `fprintd.service` before enabling
+  `open-fprintd.service` and `python3-validity.service`.
+- The AUR `python-validity` package is still upstream 0.15. Until this work is
+  released, build it from this branch by pointing the PKGBUILD `source` and
+  `pkgver` at a pinned commit.
+- The AUR package also ships `python3-validity-suspend-hotfix.service`, which
+  restarts the daemon on resume. Current builds resume without it, so it is
+  optional.
 
 On Fedora Linux
 
@@ -61,6 +77,11 @@ If it's not running, you can enable and/or start it by substituting `status` wit
 #### Errors on startup
 
 It `systemctl status python3-validity` complains about errors on startup, you may need to factory-reset the fingerprint chip. Do that like so:
+
+**Do not run this generic factory-reset procedure on `138a:00ab`,
+`06cb:00b7`, or `06cb:00cb`.** These families need device-specific reset
+sequences; use the matrix below.
+
 ```
 $ sudo systemctl stop python3-validity
 $ sudo validity-sensors-firmware
@@ -84,6 +105,41 @@ $ sudo systemctl enable open-fprintd-resume open-fprintd-suspend
 ```
 
 For even more error procedures, check [this Arch comment thread](https://aur.archlinux.org/packages/python-validity/#comment-755904) or [this python-validity bug comment thread](https://github.com/uunicorn/python-validity/issues/3).
+
+#### Clean-slate / `0404` status on d51 and 969 hardware
+
+Support is keyed by exact USB identity and flash state, not inferred from a
+similar sensor type:
+
+| USB ID | Provisioned sensor | Zero-partition sensor |
+|---|---|---|
+| `138a:00ab` | Supported | Supported only when the full ROM and sensor identity matches the captured `0xd51` / `57K0 FM- 154-120` fixture |
+| `06cb:00b7` | Supported | Supported only for the observed `0xd51` / `57K0 FM-3439-001` and `0x969` / `57K0 FM-3439-002` identities with the d51 boot ROM |
+| `06cb:00cb` | Supported | Uses its own device-specific reset payload |
+
+The validated d51 bootstrap reproduces the command ordering and 11,973-byte
+reset payload from the Windows factory capture attached to
+[PR #256](https://github.com/uunicorn/python-validity/pull/256). It has been
+validated from zero partitions through firmware upload, enrollment, and
+verification on `138a:00ab / 0xd51 / 57K0 FM- 154-120`. An independent
+factory-empty `06cb:00b7 / 0xd51 / 57K0 FM-3439-001` report confirms the same
+HP payload creates the five-partition layout through the device's original
+direct-reset ordering. Because both USB IDs also occur with different real sensor types, the
+write gate checks the boot ROM, real type, and sensor name before sending the
+destructive reset packet. Any other zero-partition model remains refused: keep
+that state intact and attach its read-only probe plus a Windows capture to PR
+#256 rather than trying payloads from adjacent models.
+
+Both `06cb:00b7` variants accept the HP reset payload, but on
+`0x969` / `FM-3439-002` the chip then refuses to apply it (`factory_reset`
+reports "refused to apply", status `0404`), so the flash stays unchanged. On HP
+systems the BIOS option "Fingerprint Reset on Reboot" does wipe these sensors.
+
+Before running `dbus-service` or any provisioning step by hand, stop the
+service with `sudo systemctl mask --now python3-validity`, not `disable`: the
+udev rule starts it on every USB add event even when it is disabled. A second
+daemon that grabs the sensor mid-provisioning leaves it with partitions but no
+TLS pairing keys. Unmask the service afterwards.
 
 ## Enabling fingerprint for system authentication
 
@@ -136,6 +192,49 @@ user_to_sid:
     "someotheruser": "S-1-5-21-1234567890-1234567890-1234567890-1003"
 ```
 Note the indentation; each entry has to be preceded by at least one space.
+
+### Template competition (0xd51 / 0x969 chips)
+
+The chip's on-chip matcher scores captured images against **every** enrolled
+template — including any Windows Hello templates written by a previous
+Windows session — and returns the highest-scoring match. On some HP models
+(reported for the ZBook G6 family, but likely broader) Windows Hello writes
+very high-quality templates that consistently outscore Linux `fprintd`
+templates for the same finger, so `fprintd-verify` silently loses even when
+enrollment succeeded.
+
+Two workarounds, in order of preference:
+
+1. **Enroll different fingers per OS.** Right-index in Linux, right-middle
+   in Windows (or whichever split you prefer). No competition, both OSes
+   keep fingerprint auth.
+2. **Erase the on-chip database from Linux.** Wipes all templates on both
+   OSes; Windows Hello fingerprint login stops working until you re-enroll
+   in Windows. PIN / TPM state is unaffected. See
+   `playground/erase-flash.py` (partition `4`).
+
+Investigated and documented by @Karloss1234 on PR
+[uunicorn/python-validity#256](https://github.com/uunicorn/python-validity/pull/256).
+
+### KDE / Kubuntu lock-screen PAM
+
+On Kubuntu the greeter/lock-screen PAM stacks aren't touched by
+`pam-auth-update`. To wire the fingerprint reader into the KDE lock screen
+you need three files under `/etc/pam.d` mirroring the same `sufficient`
+line:
+
+```
+# /etc/pam.d/kde, /etc/pam.d/kde-fingerprint, /etc/pam.d/kde-smartcard
+#%PAM-1.0
+auth    sufficient      pam_fprintd.so max_tries=3 timeout=10
+auth    required        pam_unix.so
+```
+
+Also check `/etc/pam.d/sddm-greeter` for a `pam_permit.so` fallback and
+replace it with `pam_unix.so` — otherwise the lock screen can unlock
+without authentication after fingerprint timeout.
+
+Contributed by @Karloss1234; not required on GNOME / Ubuntu proper.
 
 ## Playground
 

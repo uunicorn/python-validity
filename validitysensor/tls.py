@@ -409,6 +409,7 @@ class Tls:
         return pack('>H', id) + with_2bytes_size(b)
 
     def parse_tls_flash(self, reply: bytes):
+        seen = set()
         while len(reply) > 0:
             hdr, reply = reply[:4], reply[4:]
             hs, reply = reply[:0x20], reply[0x20:]
@@ -426,6 +427,7 @@ class Tls:
             if m.digest() != hs:
                 raise Exception('hash mismatch')
 
+            seen.add(id)
             if id == 4:
                 self.handle_priv(body)
             elif id == 6:
@@ -440,6 +442,21 @@ class Tls:
                 self.handle_empty(body)
             else:
                 self.trace('unhandled block id %04x (%d bytes): %s' % (id, sz, hexlify(body)))
+
+        # A provisioning run interrupted while writing the TLS partition (for
+        # example by a second udev-started daemon) leaves partitions in place
+        # but no pairing keys; tls.open() would then fail with an opaque
+        # AttributeError on ecdh_q / priv_key.
+        missing = [name for block, name in ((3, 'certificate'), (4, 'private key'),
+                                            (6, 'ECDH public key'))
+                   if block not in seen]
+        if missing:
+            raise Exception(
+                'TLS pairing data on the sensor is incomplete (missing: %s). '
+                'Provisioning was probably interrupted. Stop and mask the '
+                'service (systemctl mask --now python3-validity), reset the '
+                'sensor (HP: BIOS "Fingerprint Reset on Reboot"), then run '
+                'provisioning once.' % ', '.join(missing))
 
     def make_tls_flash_block(self, id: int, body: bytes):
         m = sha256()

@@ -4,6 +4,9 @@ ENV{DEVTYPE}!="usb_device", GOTO="python_validity_end"
 ATTRS{idVendor}=="138a", ATTRS{idProduct}=="0090", GOTO="python_validity_match"
 ATTRS{idVendor}=="138a", ATTRS{idProduct}=="0097", GOTO="python_validity_match"
 ATTRS{idVendor}=="06cb", ATTRS{idProduct}=="009a", GOTO="python_validity_match"
+ATTRS{idVendor}=="138a", ATTRS{idProduct}=="00ab", GOTO="python_validity_match"
+ATTRS{idVendor}=="06cb", ATTRS{idProduct}=="00b7", GOTO="python_validity_match"
+ATTRS{idVendor}=="06cb", ATTRS{idProduct}=="00cb", GOTO="python_validity_match"
 
 GOTO="python_validity_end"
 
@@ -11,7 +14,10 @@ LABEL="python_validity_match"
 
 #TAG+="validity"
 
-ACTION=="add|change", ATTR{power/control}="auto", RUN+="/bin/systemctl --no-block start python3-validity.service"
+# These internal readers have device-specific runtime state which is not
+# reliably restored after USB autosuspend. Keep only matched fingerprint
+# devices awake; system suspend is still handled by the D-Bus lifecycle.
+ACTION=="add|change", ATTR{power/control}="on", RUN+="/bin/systemctl --no-block start python3-validity.service"
 ACTION=="remove", RUN+="/bin/systemctl --no-block stop python3-validity.service"
 
 #ACTION=="add|change", RUN+="/bin/systemctl --no-block start python3-validity@usb-$env{BUSNUM}-$env{DEVNUM}.service"

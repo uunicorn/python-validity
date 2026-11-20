@@ -1,11 +1,13 @@
 [Unit]
 Description=python-validity driver dbus service
+Wants=open-fprintd.service
 After=open-fprintd.service
 
 [Service]
 Type=simple
-ExecStart=/usr/lib/python-validity/dbus-service --debug
-Restart=no
+ExecStart=/usr/lib/python-validity/dbus-service
+Restart=on-failure
+RestartSec=2s
 
 [Install]
 WantedBy=multi-user.target

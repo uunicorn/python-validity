@@ -4,9 +4,10 @@ set -e
 #DEBHELPER#
 
 if [ "$1" = "configure" ]; then
+    # Cache the signed vendor firmware while package dependencies and network
+    # policy are still under apt's control. This reads USB descriptors only;
+    # it does not open a protocol session or mutate the sensor.
     validity-sensors-firmware || true
     systemctl daemon-reload || true
     udevadm control --reload-rules || true
-    udevadm trigger || true
 fi
-

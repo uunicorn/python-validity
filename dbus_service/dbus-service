@@ -12,22 +12,28 @@ import time
 import typing
 from binascii import hexlify, unhexlify
 from pathlib import Path
-from threading import Thread
 
 import dbus
 import dbus.mainloop.glib
 import dbus.service
 import yaml
 from gi.repository import GLib
+try:
+    from gi.repository import GLibUnix
+except ImportError:  # PyGObject versions before the split namespace
+    GLibUnix = None
 from usb import core as usb_core
 
 from validitysensor import init
 from validitysensor.db import subtype_to_string, db, SidIdentity, User
 from validitysensor.init_data_dir import PYTHON_VALIDITY_DATA_DIR, init_data_dir
-from validitysensor.sensor import sensor, RebootException
+from validitysensor.operation import OperationBusy, OperationController
+from validitysensor.registration import RetryingRegistrar
+from validitysensor.sensor import sensor, RebootException, FingerNotMatchedException
 from validitysensor.sid import sid_from_string
 from validitysensor.tls import tls
-from validitysensor.usb import usb
+from validitysensor.usb import usb, CancelledException
+from validitysensor.verification import CaptureRetryNotifier, identify_with_retries
 from validitysensor.fingerprint_constants import finger_ids
 
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
@@ -45,10 +51,26 @@ class NoEnrolledPrints(dbus.DBusException):
         super().__init__('No enrolled prints found')
 
 
+class DeviceBusy(dbus.DBusException):
+    _dbus_error_name = 'net.reactivated.Fprint.Error.AlreadyInUse'
+
+    def __init__(self):
+        super().__init__('Fingerprint sensor is finishing a previous operation')
+
+
 class Device(dbus.service.Object):
     def __init__(self, bus_name: dbus.Bus, config: typing.Dict[str, typing.Any]):
         dbus.service.Object.__init__(self, bus_name, '/io/github/uunicorn/Fprint/Device')
         self.config = config
+        self.operations = OperationController(sensor.begin_operation, sensor.cancel)
+
+    def start_operation(self, target):
+        """Give one worker exclusive sensor ownership and retire its predecessor."""
+        try:
+            self.operations.start(target)
+        except OperationBusy:
+            logging.error('Previous fingerprint operation did not stop within 2 seconds')
+            raise DeviceBusy()
 
     def user2identity(self, user: str) -> SidIdentity:
         """Compute UID to SID mapping"""
@@ -67,10 +89,13 @@ class Device(dbus.service.Object):
     @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='', out_signature='')
     def Suspend(self):
         logging.debug('In Suspend')
+        sensor.cancel()
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='', out_signature='')
     def Resume(self):
         logging.debug('In Resume')
+        if not self.operations.cancel(timeout=2):
+            raise DeviceBusy()
         tls.reset()
         try:
             init.open_common()
@@ -114,28 +139,61 @@ class Device(dbus.service.Object):
 
         self.VerifyFingerSelected('any')
 
-        def update_cb(e):
-            self.VerifyStatus('verify-retry-scan', False)
+        # pam_fprintd re-prints "Place your finger on the reader" for every
+        # verify-retry-scan signal, which on this chip's chatty capture loop
+        # can fire 30+ times per verify cycle and floods the terminal during
+        # sudo. Emit it at most once per VerifyStart so the user gets one
+        # initial prompt + one early retry hint, then silence until match
+        # or timeout. Enroll keeps its per-stage signals — those are useful
+        # because each stage is a discrete user action.
+        # Blank frames, poor contact, and an actual unresponsive quality gate
+        # are indistinguishable here. The previous fixed 25-frame watchdog
+        # therefore aborted healthy verifies while the user was simply taking
+        # time to touch the reader. Let the D-Bus client own timeout/cancel.
+        update_cb = CaptureRetryNotifier(user, self.VerifyStatus)
 
         def run():
+            max_match_attempts = 3
+            def clean_no_match(attempt, maximum):
+                logging.info(
+                    'Valid fingerprint capture matched no template (%d/%d)',
+                    attempt, maximum)
+                self.VerifyStatus('verify-no-match', False)
+
             try:
                 # TODO: pass down the user db record id and implement a proper Sensor.verify() method
-                usrid, subtype, hsh = sensor.identify(update_cb)
+                usrid, subtype, hsh = identify_with_retries(
+                    sensor.identify,
+                    update_cb,
+                    clean_no_match,
+                    max_attempts=max_match_attempts,
+                )
                 if usr.dbid == usrid:
+                    logging.info(
+                        'Fingerprint verification matched enrolled template '
+                        '(user=%s)', user)
                     self.VerifyStatus('verify-match', True)
                 else:
+                    # A different user's (or Windows Hello) template really
+                    # matched; retrying cannot change template ownership.
+                    logging.info(
+                        'Fingerprint capture matched a different template '
+                        '(requested_user=%s)', user)
                     self.VerifyStatus('verify-no-match', True)
+            except FingerNotMatchedException:
+                self.VerifyStatus('verify-no-match', True)
             except usb_core.USBError as e:
                 logging.exception(e)
                 self.VerifyStatus('verify-no-match', True)
                 loop.quit()
+            except CancelledException:
+                logging.info('Fingerprint verification cancelled')
+                self.VerifyStatus('verify-no-match', True)
             except Exception as e:
                 logging.exception(e)
                 self.VerifyStatus('verify-no-match', True)
 
-        thread = Thread(target=run)
-        thread.daemon = True
-        thread.start()
+        self.start_operation(run)
 
     @dbus.service.method(dbus_interface=INTERFACE_NAME, in_signature='', out_signature='')
     def Cancel(self):
@@ -162,6 +220,9 @@ class Device(dbus.service.Object):
                 logging.exception(e)
                 self.EnrollStatus('enroll-failed', True)
                 loop.quit()
+            except CancelledException:
+                logging.info('Fingerprint enrollment cancelled')
+                self.EnrollStatus('enroll-failed', True)
             except Exception as e:
                 logging.exception(e)
                 self.EnrollStatus('enroll-failed', True)
@@ -171,9 +232,7 @@ class Device(dbus.service.Object):
                               winbio_name + ')')
             self.EnrollStatus('enroll-failed', True)
         else:
-            thread = Thread(target=run)
-            thread.daemon = True
-            thread.start()
+            self.start_operation(run)
 
     @dbus.service.signal(dbus_interface=INTERFACE_NAME, signature='sb')
     def VerifyStatus(self, result, done):
@@ -274,14 +333,29 @@ def main():
 
     svc = Device(bus, config)
 
+    def register_device(name):
+        mgr = bus.get_object(name, '/net/reactivated/Fprint/Manager')
+        mgr = dbus.Interface(mgr, 'net.reactivated.Fprint.Manager')
+        mgr.RegisterDevice(svc)
+        logging.info('Fingerprint device registered with open-fprintd')
+
+    def registration_failed(error, attempt, delay):
+        logging.warning(
+            'open-fprintd registration attempt %d failed: %s; retrying in %ds',
+            attempt, error, delay)
+
+    registrar = RetryingRegistrar(
+        register_device,
+        GLib.timeout_add_seconds,
+        registration_failed,
+    )
+
     def watch_cb(name):
         if name == '':
-            logging.debug('Manager is offline')
+            logging.info('open-fprintd manager is offline')
         else:
-            logging.debug('Manager is back online, registering')
-            mgr = bus.get_object(name, '/net/reactivated/Fprint/Manager')
-            mgr = dbus.Interface(mgr, 'net.reactivated.Fprint.Manager')
-            mgr.RegisterDevice(svc)
+            logging.info('open-fprintd manager is online')
+        registrar.owner_changed(name)
 
     watcher = bus.watch_name_owner('net.reactivated.Fprint', watch_cb)
 
@@ -292,8 +366,9 @@ def main():
         logging.info('Caught signal %d. Stopping...' % x)
         loop.quit()
 
-    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, die, signal.SIGINT)
-    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, die, signal.SIGINT)
+    signal_add = GLibUnix.signal_add if GLibUnix else GLib.unix_signal_add
+    signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, die, signal.SIGINT)
+    signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, die, signal.SIGTERM)
     try:
         loop.run()
     except Exception as e:

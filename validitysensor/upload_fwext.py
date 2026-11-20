@@ -4,12 +4,13 @@ from os.path import basename
 from time import ctime
 
 from .firmware_tables import FIRMWARE_NAMES
-from .flash import write_flash_all, write_fw_signature, get_fw_info
-from .init_data_dir import PYTHON_VALIDITY_DATA_DIR
+from .flash import erase_flash, write_flash_all, write_fw_signature, get_fw_info
+from .init_data_dir import PYTHON_VALIDITY_FIRMWARE_DIR
 from .sensor import reboot, write_hw_reg32, read_hw_reg32, identify_sensor
 from .usb import usb, SupportedDevices
 
-firmware_home = PYTHON_VALIDITY_DATA_DIR
+firmware_home = PYTHON_VALIDITY_FIRMWARE_DIR
+_INVALID_FIRMWARE_SIGNATURE = 'Signature validation failed: 044f'
 
 
 def default_fwext_name():
@@ -21,8 +22,29 @@ def default_fwext_name():
     return FIRMWARE_NAMES[dev]
 
 
+def read_or_repair_firmware_info():
+    """Recover the one known interrupted-upload state before retrying.
+
+    A missing firmware partition returns b004 and is handled as normal.  A
+    service restart during a write leaves a partial partition that responds
+    with 044f forever; that partition has no valid firmware to preserve, so
+    it can be erased and uploaded again.  Other read failures remain visible
+    instead of turning into a destructive recovery attempt.
+    """
+    try:
+        return get_fw_info(2)
+    except Exception as error:
+        if str(error) != _INVALID_FIRMWARE_SIGNATURE:
+            raise
+        logging.warning(
+            'Firmware partition has an interrupted upload (%s); erasing it '
+            'before a clean re-upload.', error)
+        erase_flash(2)
+        return None
+
+
 def upload_fwext(fw_path: typing.Optional[str] = None):
-    fwi = get_fw_info(2)
+    fwi = read_or_repair_firmware_info()
     if fwi is not None:
         logging.info('Detected firmware version %d.%d (%s))' %
                      (fwi.major, fwi.minor, ctime(fwi.buildtime)))
