@@ -1,3 +1,14 @@
+python-validity (0.16~hp20) noble; urgency=medium
+
+  * Allow the d51 clean-slate sequence for 06cb:00b7 / 0x969 /
+    57K0 FM-3439-002, reproduced from BIOS-wiped zero-partition flash on two
+    independent units (HP ZBook 17 G6 with before/after probes at 614be98,
+    and HP EliteBook 745 G6).
+  * Key each validated clean-slate identity on its real sensor type as well
+    as its name, instead of requiring 0xd51 globally.
+
+ -- Dev Tochukwu <devtochukwu@users.noreply.github.com>  Fri, 20 Nov 2026 12:00:00 +0100
+
 python-validity (0.16~hp19) noble; urgency=medium
 
   * Use the HP 11973-byte reset_blob for 06cb:00b7. Both observed variants

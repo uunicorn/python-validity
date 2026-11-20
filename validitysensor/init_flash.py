@@ -94,25 +94,32 @@ _D51_BOOT_ROM = {
 }
 
 _VALIDATED_CLEAN_SLATE_IDENTITIES = (
+    # (VID, PID, sensor name, real sensor type)
     # The original Windows USB capture, reproduced from zero partitions by
     # pianist at PR head 62ee97f.
-    (0x138a, 0x00ab, '57K0 FM- 154-120'),
+    (0x138a, 0x00ab, '57K0 FM- 154-120', 0xd51),
     # Independently reproduced from factory-empty flash by gfiguero using
     # the same HP DLL payload and current PR initialization sequence.
-    (0x06cb, 0x00b7, '57K0 FM-3439-001'),
+    (0x06cb, 0x00b7, '57K0 FM-3439-001', 0xd51),
+    # Reproduced from BIOS-wiped zero-partition flash on two independent
+    # units (Karloss1234, HP ZBook 17 G6, with before/after probes at
+    # 614be98; Ribn1k, HP EliteBook 745 G6) using the same direct-reset
+    # ordering as FM-3439-001: five partitions, fwext upload, enroll,
+    # correct/wrong verify, reboot and resume.
+    (0x06cb, 0x00b7, '57K0 FM-3439-002', 0x969),
 )
 
 
 def has_validated_clean_slate_bootstrap(dev, rom, sensor):
     """Authorize the destructive bootstrap only for physical evidence rows."""
-    # VID:PID alone is insufficient: both USB IDs have also been observed
-    # with 0x969 silicon.  Keep each destructive sequence keyed to the ROM
-    # family, real type, and model string that completed an artifact-backed
-    # zero-partition run.
+    # VID:PID alone is insufficient: both USB IDs have been observed with
+    # more than one real sensor type.  Keep each destructive sequence keyed
+    # to the ROM family, real type, and model string that completed an
+    # artifact-backed zero-partition run.
     return (
         all(rom.get(key) == value for key, value in _D51_BOOT_ROM.items())
-        and sensor.get('sensor_type') == 0xd51
-        and (dev.idVendor, dev.idProduct, sensor.get('sensor_name'))
+        and (dev.idVendor, dev.idProduct, sensor.get('sensor_name'),
+             sensor.get('sensor_type'))
         in _VALIDATED_CLEAN_SLATE_IDENTITIES
     )
 

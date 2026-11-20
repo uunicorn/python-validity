@@ -191,13 +191,37 @@ class CleanSlateBootstrapTests(unittest.TestCase):
 
         preflight.assert_not_called()
 
-    def test_b7_969_identity_cannot_use_d51_bootstrap(self):
+    def test_b7_identities_are_keyed_by_name_and_real_type(self):
         from validitysensor import init_flash
 
-        dev = type('UsbDevice', (), {
-            'idVendor': 0x06cb,
-            'idProduct': 0x00b7,
-        })()
+        dev = SimpleNamespace(idVendor=0x06cb, idProduct=0x00b7)
+        rom = {
+            'timestamp': 1415491824,
+            'build': 164,
+            'rom_major': 6,
+            'rom_minor': 7,
+            'product': 48,
+        }
+        cases = (
+            ('57K0 FM-3439-001', 0xd51, True),
+            ('57K0 FM-3439-002', 0x969, True),
+            # A name must never borrow another row's real type.
+            ('57K0 FM-3439-001', 0x969, False),
+            ('57K0 FM-3439-002', 0xd51, False),
+            ('57K0 FM-3439-004', 0x969, False),
+        )
+        for name, sensor_type, expected in cases:
+            with self.subTest(name=name, sensor_type=hex(sensor_type)):
+                self.assertEqual(
+                    init_flash.has_validated_clean_slate_bootstrap(
+                        dev, rom, {'sensor_name': name,
+                                   'sensor_type': sensor_type}),
+                    expected)
+
+    def test_validated_b7_969_uses_direct_reset_ordering(self):
+        from validitysensor import init_flash
+
+        dev = SimpleNamespace(idVendor=0x06cb, idProduct=0x00b7)
         rom = {
             'timestamp': 1415491824,
             'build': 164,
@@ -209,9 +233,21 @@ class CleanSlateBootstrapTests(unittest.TestCase):
             'sensor_type': 0x969,
             'sensor_name': '57K0 FM-3439-002',
         }
-        self.assertFalse(init_flash.has_validated_clean_slate_bootstrap(
-            dev, rom, sensor))
+        with patch.object(
+                init_flash, 'get_flash_info',
+                return_value=SimpleNamespace(partitions=[])), \
+                patch.object(init_flash.usb, 'usb_dev', return_value=dev), \
+                patch.object(
+                    init_flash, 'read_clean_slate_identity',
+                    return_value=(rom, sensor)), \
+                patch.object(init_flash, 'prepare_clean_slate_reset') as preflight, \
+                patch.object(
+                    init_flash.usb, 'cmd',
+                    side_effect=RuntimeError('reset reached')):
+            with self.assertRaisesRegex(RuntimeError, 'reset reached'):
+                init_flash.init_flash()
 
+        preflight.assert_not_called()
 
 if __name__ == '__main__':
     unittest.main()

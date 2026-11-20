@@ -114,7 +114,7 @@ similar sensor type:
 | USB ID | Provisioned sensor | Zero-partition sensor |
 |---|---|---|
 | `138a:00ab` | Supported | Supported only when the full ROM and sensor identity matches the captured `0xd51` / `57K0 FM- 154-120` fixture |
-| `06cb:00b7` | Supported | Supported only for the observed `0xd51` / `57K0 FM-3439-001` identity with the d51 boot ROM. `0x969` / `57K0 FM-3439-002` is refused pending a pinned reproduction |
+| `06cb:00b7` | Supported | Supported only for the observed `0xd51` / `57K0 FM-3439-001` and `0x969` / `57K0 FM-3439-002` identities with the d51 boot ROM |
 | `06cb:00cb` | Supported | Uses its own device-specific reset payload |
 
 The validated d51 bootstrap reproduces the command ordering and 11,973-byte
